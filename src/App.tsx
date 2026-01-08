@@ -28,7 +28,7 @@ ChartJS.register(
 );
 
 const endpoint =
-  "https://script.google.com/macros/s/AKfycbxhq9pjz1Z1CyVuFB6Mv3yJmtEBYhju3SGKAcJ8mIanygfPdolqMcOk2A0tG05MHVanjQ/exec";
+  "https://script.google.com/macros/s/AKfycbzQzyoOiPzA59Vr_17UG01YtTg8EtJ5KKr5HjWenzqG5GZ6B-msM2zzTmf2OhwVNkjIeg/exec";
 const SHEET_SEMESTER1 = "RekapSemester1";
 const SHEET_SEMESTER2 = "RekapSemester2";
 
@@ -3554,7 +3554,7 @@ const SplashScreen: React.FC = () => {
         className="w-52 h-70 mb-4 animate-pulse-custom" //Pengaturan ukuran logo
       />
       <p className="text-gray-800 text-lg font-semibold mt-6">
-        Setiawan Utama Jaya, S.Pd
+        Muh. Ramlan, S.Pd
       </p>
     </div>
   );
