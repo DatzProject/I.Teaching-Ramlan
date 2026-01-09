@@ -3678,7 +3678,7 @@ const StudentAttendanceApp: React.FC = () => {
           { tab: "recap", label: "📊 Rekap Bulanan" },
           { tab: "semesterRecap", label: "📚 Rekap Semester" },
           { tab: "graph", label: "📈 Grafik" },
-          { tab: "daftarHadir", label: "📆 Riwayat Absen" },
+          { tab: "daftarHadir", label: "📜 Riwayat Absen" },
           { tab: "clearData", label: "🗑️ Hapus Data" },
         ].map(({ tab, label }) => (
           <button
