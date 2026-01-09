@@ -29,7 +29,7 @@ ChartJS.register(
 );
 
 const endpoint =
-  "https://script.google.com/macros/s/AKfycbzQzyoOiPzA59Vr_17UG01YtTg8EtJ5KKr5HjWenzqG5GZ6B-msM2zzTmf2OhwVNkjIeg/exec";
+  "https://script.google.com/macros/s/AKfycbykWxr-o2X0K3FqWtKkdhILuH7mMzLCpwfahbWinzC-2XEpz-bsiKCdeLKG_4MYIyzrYg/exec";
 const SHEET_SEMESTER1 = "RekapSemester1";
 const SHEET_SEMESTER2 = "RekapSemester2";
 
@@ -47,6 +47,7 @@ interface SchoolData {
   namaGuru: string;
   nipGuru: string;
   ttdGuru: string;
+  namaKota: string;
 }
 
 type AttendanceStatus = "Hadir" | "Izin" | "Sakit" | "Alpha";
@@ -135,6 +136,7 @@ const SchoolDataTab: React.FC<{
   const [isGuruSigning, setIsGuruSigning] = useState(false);
   const kepsekSigCanvas = useRef<SignatureCanvas>(null);
   const guruSigCanvas = useRef<SignatureCanvas>(null);
+  const [namaKota, setNamaKota] = useState("");
 
   useEffect(() => {
     fetch(`${endpoint}?action=schoolData`)
@@ -152,6 +154,7 @@ const SchoolDataTab: React.FC<{
           setNamaGuru(record.namaGuru);
           setNipGuru(record.nipGuru);
           setTtdGuru(record.ttdGuru);
+          setNamaKota(record.namaKota);
         } else {
           setSchoolData(null);
         }
@@ -179,6 +182,7 @@ const SchoolDataTab: React.FC<{
       namaGuru,
       nipGuru,
       ttdGuru: ttdGuru || "",
+      namaKota: namaKota || "",
     };
 
     fetch(endpoint, {
@@ -254,6 +258,19 @@ const SchoolDataTab: React.FC<{
           🏫 Data Sekolah
         </h2>
         <div className="grid grid-cols-1 gap-4 mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">
+              Kota/Kabupaten
+            </h3>
+            <input
+              type="text"
+              placeholder="Nama Kota/Kabupaten"
+              value={namaKota}
+              onChange={(e) => setNamaKota(e.target.value)}
+              className="w-full border border-gray-300 px-4 py-2 rounded-lg mb-2"
+              disabled={isSaving}
+            />
+          </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-700 mb-2">
               Kepala Sekolah
@@ -1553,7 +1570,6 @@ const MonthlyRecapTab: React.FC<{
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
-  const [placeName, setPlaceName] = useState<string>("Makassar");
   const [loading, setLoading] = useState<boolean>(true);
   const [schoolData, setSchoolData] = useState<SchoolData | null>(null);
 
@@ -1910,7 +1926,9 @@ const MonthlyRecapTab: React.FC<{
         month: "long",
         year: "numeric",
       });
-      const placeDateText = `${placeName}, ${formattedDate}`;
+      const placeDateText = `${
+        schoolData.namaKota || "Makassar"
+      }, ${formattedDate}`;
       const rightColumnX = pageWidth - margin - 50; // Signature width is 50
       doc.text(placeDateText, rightColumnX + 25, currentY - 1, {
         align: "center",
@@ -2152,16 +2170,6 @@ const MonthlyRecapTab: React.FC<{
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="border border-gray-300 rounded-lg px-1 py-0.5 shadow-sm bg-white min-w-32"
-              />
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-gray-500 mb-2">Nama Tempat</p>
-              <input
-                type="text"
-                value={placeName}
-                onChange={(e) => setPlaceName(e.target.value)}
-                placeholder="Masukkan nama tempat"
                 className="border border-gray-300 rounded-lg px-1 py-0.5 shadow-sm bg-white min-w-32"
               />
             </div>
@@ -2581,7 +2589,7 @@ const SemesterRecapTab: React.FC<{ uniqueClasses: string[] }> = ({
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
-  const [placeName, setPlaceName] = useState<string>("Makassar");
+
   const [loading, setLoading] = useState<boolean>(true);
   const [schoolData, setSchoolData] = useState<SchoolData | null>(null);
 
@@ -2919,7 +2927,9 @@ const SemesterRecapTab: React.FC<{ uniqueClasses: string[] }> = ({
         month: "long",
         year: "numeric",
       });
-      const placeDateText = `${placeName}, ${formattedDate}`;
+      const placeDateText = `${
+        schoolData.namaKota || "Makassar"
+      }, ${formattedDate}`;
       const rightColumnX = pageWidth - margin - 50; // Signature width is 50
       doc.text(placeDateText, rightColumnX + 25, currentY - 1, {
         align: "center",
@@ -3154,16 +3164,6 @@ const SemesterRecapTab: React.FC<{ uniqueClasses: string[] }> = ({
                 type="date"
                 value={selectedDate}
                 onChange={(e) => setSelectedDate(e.target.value)}
-                className="border border-gray-300 rounded-lg px-1 py-0.5 shadow-sm bg-white min-w-32"
-              />
-            </div>
-            <div className="text-center">
-              <p className="text-sm text-gray-500 mb-2">Nama Tempat</p>
-              <input
-                type="text"
-                value={placeName}
-                onChange={(e) => setPlaceName(e.target.value)}
-                placeholder="Masukkan nama tempat"
                 className="border border-gray-300 rounded-lg px-1 py-0.5 shadow-sm bg-white min-w-32"
               />
             </div>
@@ -3776,6 +3776,19 @@ const StudentAttendanceApp: React.FC = () => {
   );
 };
 
+const hasAnyAttendanceOnDate = (
+  students: Student[],
+  day: number,
+  attendanceDataGetter: (student: Student) => {
+    attendance: { [day: number]: string };
+  }
+): boolean => {
+  return students.some((student) => {
+    const { attendance } = attendanceDataGetter(student);
+    return attendance[day] && attendance[day] !== "";
+  });
+};
+
 const DaftarHadirTab: React.FC<{
   students: Student[];
   uniqueClasses: string[];
@@ -3800,7 +3813,7 @@ const DaftarHadirTab: React.FC<{
   const [selectedDate, setSelectedDate] = useState<string>(
     new Date().toISOString().split("T")[0]
   );
-  const [placeName, setPlaceName] = useState<string>("Makassar");
+
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [showModal, setShowModal] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
@@ -3821,6 +3834,208 @@ const DaftarHadirTab: React.FC<{
   ];
 
   const years = Array.from({ length: 11 }, (_, i) => 2020 + i); // 2020-2030, sesuaikan jika perlu
+
+  // Hitung jumlah hari di bulan (pindahkan ke atas agar bisa digunakan di useMemo)
+  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+
+  // Filter siswa berdasarkan kelas (pindahkan ke atas sebelum memoization)
+  const filteredStudents = React.useMemo(() => {
+    const result =
+      selectedKelas === "Semua"
+        ? students
+        : students.filter(
+            (student) => String(student.kelas).trim() === selectedKelas
+          );
+
+    console.log("=== FILTERED STUDENTS ===");
+    console.log("Selected Kelas:", selectedKelas);
+    console.log("Total students:", result.length);
+    if (result.length > 0) {
+      console.log("Sample students (first 3):");
+      result.slice(0, 3).forEach((s, i) => {
+        console.log(`Student ${i}:`, {
+          name: s.name,
+          nisn: s.nisn,
+          kelas: s.kelas,
+        });
+      });
+    }
+
+    return result;
+  }, [students, selectedKelas]);
+
+  // Define getAttendanceForStudent FIRST before using in useMemo
+  const getAttendanceForStudent = React.useCallback(
+    (student: Student) => {
+      const studentAttendance: Record<number, string> = {};
+
+      const studentNisn = String(student.nisn || "")
+        .trim()
+        .replace(/\s+/g, "")
+        .toUpperCase();
+      const studentNama = String(student.name || "")
+        .trim()
+        .toLowerCase();
+
+      attendanceData.forEach((record) => {
+        const recordNisn = String(record.nisn || "")
+          .trim()
+          .replace(/\s+/g, "")
+          .toUpperCase();
+        const recordNama = String(record.nama || "")
+          .trim()
+          .toLowerCase();
+
+        const nisnMatch =
+          studentNisn && recordNisn && studentNisn === recordNisn;
+        const nameMatch =
+          studentNama && recordNama && studentNama === recordNama;
+        const isMatch = nisnMatch || nameMatch;
+
+        if (isMatch) {
+          const dateParts = record.tanggal.split("/");
+          if (dateParts.length === 3) {
+            const day = parseInt(dateParts[0], 10);
+            const month = parseInt(dateParts[1], 10);
+            const year = parseInt(dateParts[2], 10);
+
+            if (
+              month === selectedMonth &&
+              year === selectedYear &&
+              !isNaN(day)
+            ) {
+              let code = "";
+              switch (record.status) {
+                case "Hadir":
+                  code = "H";
+                  break;
+                case "Izin":
+                  code = "I";
+                  break;
+                case "Sakit":
+                  code = "S";
+                  break;
+                case "Alpha":
+                  code = "A";
+                  break;
+              }
+              if (code) studentAttendance[day] = code;
+            }
+          }
+        }
+      });
+
+      Object.entries(editedRecords).forEach(([key, record]) => {
+        const keyParts = key.split("_");
+        if (keyParts.length >= 2 && keyParts[0] === student.id) {
+          const day = parseInt(keyParts[1], 10);
+          const dateParts = record.date.split("/");
+          if (dateParts.length === 3) {
+            const month = parseInt(dateParts[1], 10);
+            const year = parseInt(dateParts[2], 10);
+
+            if (
+              month === selectedMonth &&
+              year === selectedYear &&
+              !isNaN(day)
+            ) {
+              let code = "";
+              switch (record.status) {
+                case "Hadir":
+                  code = "H";
+                  break;
+                case "Izin":
+                  code = "I";
+                  break;
+                case "Sakit":
+                  code = "S";
+                  break;
+                case "Alpha":
+                  code = "A";
+                  break;
+              }
+              if (code) {
+                studentAttendance[day] = code;
+              } else if (record.status === "") {
+                delete studentAttendance[day];
+              }
+            }
+          }
+        }
+      });
+
+      const countH = Object.values(studentAttendance).filter(
+        (v) => v === "H"
+      ).length;
+      const countS = Object.values(studentAttendance).filter(
+        (v) => v === "S"
+      ).length;
+      const countI = Object.values(studentAttendance).filter(
+        (v) => v === "I"
+      ).length;
+      const countA = Object.values(studentAttendance).filter(
+        (v) => v === "A"
+      ).length;
+
+      return {
+        attendance: studentAttendance,
+        counts: { H: countH, S: countS, I: countI, A: countA },
+      };
+    },
+    [attendanceData, editedRecords, selectedMonth, selectedYear]
+  );
+
+  // NOW use it in useMemo
+  const studentAttendanceMap = React.useMemo(() => {
+    const map = new Map();
+    filteredStudents.forEach((student) => {
+      map.set(student.id, getAttendanceForStudent(student));
+    });
+    return map;
+  }, [filteredStudents, getAttendanceForStudent]);
+
+  const attendanceByDateMemo = React.useMemo(() => {
+    const attendanceByDate: {
+      [day: number]: { hadir: number; total: number };
+    } = {};
+
+    filteredStudents.forEach((student) => {
+      const cached = studentAttendanceMap.get(student.id);
+      if (!cached) return;
+
+      const { attendance } = cached;
+
+      Array.from({ length: daysInMonth }, (_, day) => {
+        const dayNum = day + 1;
+        const status = attendance[dayNum] || "";
+
+        if (!attendanceByDate[dayNum]) {
+          attendanceByDate[dayNum] = { hadir: 0, total: 0 };
+        }
+
+        if (status === "H") {
+          attendanceByDate[dayNum].hadir += 1;
+        }
+
+        if (status !== "") {
+          attendanceByDate[dayNum].total += 1;
+        }
+      });
+    });
+
+    return attendanceByDate;
+  }, [filteredStudents, studentAttendanceMap, daysInMonth]);
+
+  const daysWithNoData = React.useMemo(() => {
+    const days = new Set<number>();
+    for (let day = 1; day <= daysInMonth; day++) {
+      const stats = attendanceByDateMemo[day] || { hadir: 0, total: 0 };
+      if (stats.total === 0) {
+        days.add(day);
+      }
+    }
+    return days;
+  }, [attendanceByDateMemo, daysInMonth]);
 
   const fetchAttendanceData = async () => {
     setLoading(true);
@@ -3942,35 +4157,6 @@ const DaftarHadirTab: React.FC<{
       });
   }, []);
 
-  // Filter siswa berdasarkan kelas
-  const filteredStudents = React.useMemo(() => {
-    const result =
-      selectedKelas === "Semua"
-        ? students
-        : students.filter(
-            (student) => String(student.kelas).trim() === selectedKelas
-          );
-
-    console.log("=== FILTERED STUDENTS ===");
-    console.log("Selected Kelas:", selectedKelas);
-    console.log("Total students:", result.length);
-    if (result.length > 0) {
-      console.log("Sample students (first 3):");
-      result.slice(0, 3).forEach((s, i) => {
-        console.log(`Student ${i}:`, {
-          name: s.name,
-          nisn: s.nisn,
-          kelas: s.kelas,
-        });
-      });
-    }
-
-    return result;
-  }, [students, selectedKelas]);
-
-  // Hitung jumlah hari di bulan
-  const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
-
   // Filter data absensi yang valid (tidak ada formula atau error)
   const filterValidAttendance = (
     data: AttendanceHistory[]
@@ -3999,179 +4185,8 @@ const DaftarHadirTab: React.FC<{
     });
   };
 
-  const getAttendanceForStudent = (student: Student) => {
-    const studentAttendance: { [day: number]: string } = {};
-    // Variabel counts akan dihitung di akhir setelah semua data terkumpul
-
-    console.log(`\n=== Processing ${student.name} (NISN: ${student.nisn}) ===`);
-
-    // Normalisasi NISN siswa
-    const studentNisn = String(student.nisn || "")
-      .trim()
-      .replace(/\s+/g, "")
-      .toUpperCase();
-    const studentNama = String(student.name || "")
-      .trim()
-      .toLowerCase();
-
-    console.log("Normalized Student NISN:", studentNisn);
-    console.log("Normalized Student Name:", studentNama);
-
-    // LANGKAH 1: Ambil data dari attendanceData
-    attendanceData.forEach((record) => {
-      // Normalisasi data record
-      const recordNisn = String(record.nisn || "")
-        .trim()
-        .replace(/\s+/g, "")
-        .toUpperCase();
-      const recordNama = String(record.nama || "")
-        .trim()
-        .toLowerCase();
-
-      // Pencocokan lebih fleksibel
-      const nisnMatch = studentNisn && recordNisn && studentNisn === recordNisn;
-      const nameMatch = studentNama && recordNama && studentNama === recordNama;
-      const isMatch = nisnMatch || nameMatch;
-
-      if (isMatch) {
-        // Parse tanggal
-        const dateParts = record.tanggal.split("/");
-
-        if (dateParts.length === 3) {
-          const day = parseInt(dateParts[0], 10);
-          const month = parseInt(dateParts[1], 10);
-          const year = parseInt(dateParts[2], 10);
-
-          if (month === selectedMonth && year === selectedYear && !isNaN(day)) {
-            let code = "";
-            switch (record.status) {
-              case "Hadir":
-                code = "H";
-                break;
-              case "Izin":
-                code = "I";
-                break;
-              case "Sakit":
-                code = "S";
-                break;
-              case "Alpha":
-                code = "A";
-                break;
-            }
-
-            if (code) {
-              studentAttendance[day] = code;
-              console.log(`Found attendance: Day ${day} = ${code}`);
-            }
-          }
-        }
-      }
-    });
-
-    // LANGKAH 2: Override dengan editedRecords (INI YANG PENTING!)
-    Object.entries(editedRecords).forEach(([key, record]) => {
-      // Parse key format: "studentId_day"
-      const keyParts = key.split("_");
-      if (keyParts.length >= 2 && keyParts[0] === student.id) {
-        const day = parseInt(keyParts[1], 10);
-
-        // Parse date dari record
-        const dateParts = record.date.split("/");
-        if (dateParts.length === 3) {
-          const month = parseInt(dateParts[1], 10);
-          const year = parseInt(dateParts[2], 10);
-
-          if (month === selectedMonth && year === selectedYear && !isNaN(day)) {
-            let code = "";
-            switch (record.status) {
-              case "Hadir":
-                code = "H";
-                break;
-              case "Izin":
-                code = "I";
-                break;
-              case "Sakit":
-                code = "S";
-                break;
-              case "Alpha":
-                code = "A";
-                break;
-            }
-
-            if (code) {
-              studentAttendance[day] = code;
-              console.log(
-                `Applied edit: Day ${day} = ${code} (from editedRecords)`
-              );
-            } else if (record.status === "") {
-              // Jika status kosong, hapus entry
-              delete studentAttendance[day];
-              console.log(`Removed attendance: Day ${day}`);
-            }
-          }
-        }
-      }
-    });
-
-    // LANGKAH 3: Hitung counts dari studentAttendance yang sudah final
-    const countH = Object.values(studentAttendance).filter(
-      (v) => v === "H"
-    ).length;
-    const countS = Object.values(studentAttendance).filter(
-      (v) => v === "S"
-    ).length;
-    const countI = Object.values(studentAttendance).filter(
-      (v) => v === "I"
-    ).length;
-    const countA = Object.values(studentAttendance).filter(
-      (v) => v === "A"
-    ).length;
-
-    console.log("Final attendance:", studentAttendance);
-    console.log(
-      "Counts - H:",
-      countH,
-      "S:",
-      countS,
-      "I:",
-      countI,
-      "A:",
-      countA
-    );
-
-    return {
-      attendance: studentAttendance,
-      counts: { H: countH, S: countS, I: countI, A: countA },
-    };
-  };
-
   const getAttendanceByDate = () => {
-    const attendanceByDate: {
-      [day: number]: { hadir: number; total: number };
-    } = {};
-
-    filteredStudents.forEach((student) => {
-      const { attendance } = getAttendanceForStudent(student);
-
-      Array.from({ length: daysInMonth }, (_, day) => {
-        const dayNum = day + 1;
-        const status = attendance[dayNum] || "";
-
-        if (!attendanceByDate[dayNum]) {
-          attendanceByDate[dayNum] = { hadir: 0, total: 0 };
-        }
-
-        if (status === "H") {
-          attendanceByDate[dayNum].hadir += 1;
-        }
-
-        if (status !== "") {
-          attendanceByDate[dayNum].total += 1;
-        }
-      });
-    });
-
-    return attendanceByDate;
+    return attendanceByDateMemo; // Gunakan yang sudah di-memoize
   };
 
   const getTotalSummary = () => {
@@ -4453,7 +4468,10 @@ const DaftarHadirTab: React.FC<{
 
     // Body data untuk siswa
     const body = filteredStudents.map((student, index) => {
-      const { attendance, counts } = getAttendanceForStudent(student);
+      const cached = studentAttendanceMap.get(student.id);
+      if (!cached) return [];
+
+      const { attendance, counts } = cached;
       return [
         index + 1,
         student.nisn || "N/A",
@@ -4511,7 +4529,7 @@ const DaftarHadirTab: React.FC<{
       ...Array.from({ length: daysInMonth }, (_, day) => {
         const dayNum = day + 1;
         const stats = attendanceByDate[dayNum] || { hadir: 0, total: 0 };
-        return stats.hadir;
+        return stats.total > 0 ? stats.hadir : "";
       }),
       "-",
       "-",
@@ -4531,7 +4549,7 @@ const DaftarHadirTab: React.FC<{
         const percentage =
           stats.total > 0
             ? ((stats.hadir / stats.total) * 100).toFixed(0) + "%"
-            : "0%";
+            : "";
         return percentage;
       }),
       "-",
@@ -4587,8 +4605,37 @@ const DaftarHadirTab: React.FC<{
         // Styling khusus untuk baris "Jumlah Hadir" dan "% Hadir"
         if (data.row.index >= body.length) {
           data.cell.styles.fillColor =
-            data.row.index === body.length ? [219, 234, 254] : [220, 252, 231]; // Biru muda untuk Jumlah Hadir, hijau muda untuk % Hadir
+            data.row.index === body.length ? [219, 234, 254] : [220, 252, 231];
           data.cell.styles.fontStyle = "bold";
+        }
+
+        // TAMBAHAN BARU: Styling untuk kolom tanggal yang tidak ada data di HEADER
+        if (
+          data.row.section === "head" &&
+          data.column.index >= 3 &&
+          data.column.index < 3 + daysInMonth
+        ) {
+          const dayNum = data.column.index - 2;
+          const stats = attendanceByDateMemo[dayNum] || { hadir: 0, total: 0 }; // UBAH BARIS INI
+
+          if (stats.total === 0) {
+            data.cell.styles.fillColor = [255, 200, 200];
+          }
+        }
+
+        // TAMBAHAN BARU: Styling untuk cell data siswa pada tanggal tanpa data di BODY
+        if (
+          data.row.section === "body" &&
+          data.row.index < body.length &&
+          data.column.index >= 3 &&
+          data.column.index < 3 + daysInMonth
+        ) {
+          const dayNum = data.column.index - 2;
+          const stats = attendanceByDateMemo[dayNum] || { hadir: 0, total: 0 }; // UBAH BARIS INI
+
+          if (stats.total === 0) {
+            data.cell.styles.fillColor = [255, 220, 220];
+          }
         }
       },
     });
@@ -4605,7 +4652,9 @@ const DaftarHadirTab: React.FC<{
         month: "long",
         year: "numeric",
       });
-      const placeDateText = `${placeName}, ${formattedDate}`;
+      const placeDateText = `${
+        schoolData.namaKota || "Makassar"
+      }, ${formattedDate}`;
       const rightColumnX = pageWidth - margin - 50;
       doc.text(placeDateText, rightColumnX + 25, currentY - 1, {
         align: "center",
@@ -4842,16 +4891,6 @@ const DaftarHadirTab: React.FC<{
                 className="border border-gray-300 rounded-lg px-1 py-0.5 shadow-sm bg-white min-w-32"
               />
             </div>
-            <div className="text-center">
-              <p className="text-sm text-gray-500 mb-2">Nama Tempat</p>
-              <input
-                type="text"
-                value={placeName}
-                onChange={(e) => setPlaceName(e.target.value)}
-                placeholder="Masukkan nama tempat"
-                className="border border-gray-300 rounded-lg px-1 py-0.5 shadow-sm bg-white min-w-32"
-              />
-            </div>
           </div>
         </div>
 
@@ -4940,11 +4979,21 @@ const DaftarHadirTab: React.FC<{
               <tr className="bg-gray-100">
                 <th className="freeze-no border px-2 py-1 text-sm">No</th>
                 <th className="freeze-nama border px-2 py-1 text-sm">NAMA</th>
-                {Array.from({ length: daysInMonth }, (_, i) => (
-                  <th key={i} className="border px-1 py-1 text-sm">
-                    {String(i + 1).padStart(2, "0")}
-                  </th>
-                ))}
+                {Array.from({ length: daysInMonth }, (_, i) => {
+                  const dayNum = i + 1;
+                  const hasData = !daysWithNoData.has(dayNum);
+
+                  return (
+                    <th
+                      key={i}
+                      className={`border px-1 py-1 text-sm ${
+                        !hasData ? "bg-red-200" : ""
+                      }`}
+                    >
+                      {String(dayNum).padStart(2, "0")}
+                    </th>
+                  );
+                })}
                 <th className="border px-2 py-1 text-sm" colSpan={4}>
                   JUMLAH
                 </th>
@@ -4963,7 +5012,10 @@ const DaftarHadirTab: React.FC<{
             </thead>
             <tbody>
               {filteredStudents.map((student, index) => {
-                const { attendance, counts } = getAttendanceForStudent(student);
+                const cached = studentAttendanceMap.get(student.id);
+                if (!cached) return null;
+
+                const { attendance, counts } = cached;
 
                 return (
                   <tr
@@ -4984,6 +5036,9 @@ const DaftarHadirTab: React.FC<{
                       const currentValue = attendance[day + 1] || "";
                       const key = `${student.id}_${day + 1}`;
                       const isEdited = editedRecords[key] !== undefined;
+                      const dayNum = day + 1;
+
+                      const hasDataOnThisDate = !daysWithNoData.has(dayNum);
 
                       const getFullStatus = (
                         code: string
@@ -5021,7 +5076,11 @@ const DaftarHadirTab: React.FC<{
                         <td
                           key={day}
                           className={`border px-1 py-1 text-center text-xs ${
-                            isEdited ? "bg-yellow-100" : ""
+                            isEdited
+                              ? "bg-yellow-100"
+                              : !hasDataOnThisDate
+                              ? "bg-red-100"
+                              : ""
                           }`}
                         >
                           <select
@@ -5109,7 +5168,7 @@ const DaftarHadirTab: React.FC<{
                       key={day}
                       className="border px-1 py-1 text-center text-xs"
                     >
-                      {stats.hadir}
+                      {stats.total > 0 ? stats.hadir : ""}
                     </td>
                   );
                 })}
@@ -5137,14 +5196,14 @@ const DaftarHadirTab: React.FC<{
                   };
                   const percentage =
                     stats.total > 0
-                      ? ((stats.hadir / stats.total) * 100).toFixed(0)
-                      : "0";
+                      ? ((stats.hadir / stats.total) * 100).toFixed(0) + "%"
+                      : "";
                   return (
                     <td
                       key={day}
                       className="border px-1 py-1 text-center text-xs"
                     >
-                      {percentage}%
+                      {percentage}
                     </td>
                   );
                 })}
