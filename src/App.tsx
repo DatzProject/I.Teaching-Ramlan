@@ -29,7 +29,7 @@ ChartJS.register(
 );
 
 const endpoint =
-  "https://script.google.com/macros/s/AKfycbykWxr-o2X0K3FqWtKkdhILuH7mMzLCpwfahbWinzC-2XEpz-bsiKCdeLKG_4MYIyzrYg/exec";
+  "https://script.google.com/macros/s/AKfycbxnk-ZR1d3l28XVZZEmeqg4YYBXWRXpIUwEglixSPwv0x5rVick7ID7rJrSyV4rNIwhCQ/exec";
 const SHEET_SEMESTER1 = "RekapSemester1";
 const SHEET_SEMESTER2 = "RekapSemester2";
 
@@ -48,6 +48,7 @@ interface SchoolData {
   nipGuru: string;
   ttdGuru: string;
   namaKota: string;
+  statusGuru: string;
 }
 
 type AttendanceStatus = "Hadir" | "Izin" | "Sakit" | "Alpha";
@@ -137,6 +138,7 @@ const SchoolDataTab: React.FC<{
   const kepsekSigCanvas = useRef<SignatureCanvas>(null);
   const guruSigCanvas = useRef<SignatureCanvas>(null);
   const [namaKota, setNamaKota] = useState("");
+  const [statusGuru, setStatusGuru] = useState("Guru Kelas");
 
   useEffect(() => {
     fetch(`${endpoint}?action=schoolData`)
@@ -155,6 +157,7 @@ const SchoolDataTab: React.FC<{
           setNipGuru(record.nipGuru);
           setTtdGuru(record.ttdGuru);
           setNamaKota(record.namaKota);
+          setStatusGuru(record.statusGuru || "Guru Kelas");
         } else {
           setSchoolData(null);
         }
@@ -169,20 +172,21 @@ const SchoolDataTab: React.FC<{
 
   const handleSave = () => {
     if (!namaKepsek || !nipKepsek || !namaGuru || !nipGuru) {
-      alert("⚠️ Semua field wajib diisi kecuali tanda tangan!");
+      alert("⚠️ Nama dan NIP Kepala Sekolah serta Guru wajib diisi!");
       return;
     }
 
-    setIsSaving(true); // Set saving state to true
+    setIsSaving(true);
 
     const data: SchoolData = {
       namaKepsek,
       nipKepsek,
-      ttdKepsek: ttdKepsek || "",
+      ttdKepsek: ttdKepsek || "", // Sudah benar - bisa kosong
       namaGuru,
       nipGuru,
-      ttdGuru: ttdGuru || "",
+      ttdGuru: ttdGuru || "", // Sudah benar - bisa kosong
       namaKota: namaKota || "",
+      statusGuru: statusGuru || "Guru Kelas",
     };
 
     fetch(endpoint, {
@@ -273,6 +277,21 @@ const SchoolDataTab: React.FC<{
           </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-700 mb-2">
+              Status Guru
+            </h3>
+            <select
+              value={statusGuru}
+              onChange={(e) => setStatusGuru(e.target.value)}
+              className="w-full border border-gray-300 px-4 py-2 rounded-lg mb-2"
+              disabled={isSaving}
+            >
+              <option value="Guru Kelas">Guru Kelas</option>
+              <option value="Guru PJOK">Guru PJOK</option>
+              <option value="Guru PAI">Guru PAI</option>
+            </select>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">
               Kepala Sekolah
             </h3>
             <input
@@ -354,11 +373,30 @@ const SchoolDataTab: React.FC<{
               </div>
             </div>
             {ttdKepsek && (
-              <img
-                src={ttdKepsek}
-                alt="Tanda Tangan Kepala Sekolah"
-                className="mt-2 max-w-full h-20 border border-gray-200 rounded-lg"
-              />
+              <>
+                <img
+                  src={ttdKepsek}
+                  alt="Tanda Tangan Kepala Sekolah"
+                  className="mt-2 max-w-full h-20 border border-gray-200 rounded-lg"
+                />
+                <button
+                  onClick={() => {
+                    if (
+                      confirm(
+                        "Hapus tanda tangan Kepala Sekolah yang tersimpan?"
+                      )
+                    ) {
+                      setTtdKepsek("");
+                    }
+                  }}
+                  disabled={isSaving}
+                  className={`mt-2 px-4 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm ${
+                    isSaving ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
+                  🗑️ Hapus TTD Tersimpan
+                </button>
+              </>
             )}
           </div>
           <div>
@@ -440,11 +478,26 @@ const SchoolDataTab: React.FC<{
               </div>
             </div>
             {ttdGuru && (
-              <img
-                src={ttdGuru}
-                alt="Tanda Tangan Guru"
-                className="mt-2 max-w-full h-20 border border-gray-200 rounded-lg"
-              />
+              <>
+                <img
+                  src={ttdGuru}
+                  alt="Tanda Tangan Guru"
+                  className="mt-2 max-w-full h-20 border border-gray-200 rounded-lg"
+                />
+                <button
+                  onClick={() => {
+                    if (confirm("Hapus tanda tangan Guru yang tersimpan?")) {
+                      setTtdGuru("");
+                    }
+                  }}
+                  disabled={isSaving}
+                  className={`mt-2 px-4 py-1 bg-red-500 hover:bg-red-600 text-white rounded-lg text-sm ${
+                    isSaving ? "opacity-50 cursor-not-allowed" : ""
+                  }`}
+                >
+                  🗑️ Hapus TTD Tersimpan
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -1566,12 +1619,6 @@ const MonthlyRecapTab: React.FC<{
 }> = ({ onRefresh, uniqueClasses }) => {
   const [recapData, setRecapData] = useState<MonthlyRecap[]>([]);
   const [selectedKelas, setSelectedKelas] = useState<string>("Semua");
-  const [selectedBulan, setSelectedBulan] = useState<string>("Oktober");
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
-  const [loading, setLoading] = useState<boolean>(true);
-  const [schoolData, setSchoolData] = useState<SchoolData | null>(null);
 
   const months = [
     "Januari",
@@ -1587,6 +1634,19 @@ const MonthlyRecapTab: React.FC<{
     "November",
     "Desember",
   ] as const;
+
+  // Dapatkan bulan berjalan secara otomatis
+  const getCurrentMonth = () => {
+    const currentMonthIndex = new Date().getMonth(); // 0-11
+    return months[currentMonthIndex];
+  };
+
+  const [selectedBulan, setSelectedBulan] = useState<string>(getCurrentMonth());
+  const [selectedDate, setSelectedDate] = useState<string>(
+    new Date().toISOString().split("T")[0]
+  );
+  const [loading, setLoading] = useState<boolean>(true);
+  const [schoolData, setSchoolData] = useState<SchoolData | null>(null);
 
   useEffect(() => {
     setLoading(true);
@@ -2057,9 +2117,14 @@ const MonthlyRecapTab: React.FC<{
       }
 
       // Pisahkan "Guru Kelas" dengan posisi yang lebih tinggi
-      doc.text("Guru Kelas,", rightColumnX + 25, currentY - 2, {
-        align: "center",
-      });
+      doc.text(
+        `${schoolData.statusGuru || "Guru Kelas"},`,
+        rightColumnX + 25,
+        currentY - 2,
+        {
+          align: "center",
+        }
+      );
 
       // Kosong dan kosong
       doc.text("", rightColumnX + 25, currentY + lineSpacing, {
@@ -3056,9 +3121,14 @@ const SemesterRecapTab: React.FC<{ uniqueClasses: string[] }> = ({
       }
 
       // Pisahkan "Guru Kelas" dengan posisi yang lebih tinggi
-      doc.text("Guru Kelas,", rightColumnX + 25, currentY - 2, {
-        align: "center",
-      });
+      doc.text(
+        `${schoolData.statusGuru || "Guru Kelas"},`,
+        rightColumnX + 25,
+        currentY - 2,
+        {
+          align: "center",
+        }
+      );
 
       // Kosong dan kosong
       doc.text("", rightColumnX + 25, currentY + lineSpacing, {
@@ -4399,9 +4469,14 @@ const DaftarHadirTab: React.FC<{
   };
 
   const handleDeleteAllAttendance = () => {
+    const monthLabel =
+      months.find((m) => m.value === selectedMonth)?.label || "";
+    const kelasLabel =
+      selectedKelas === "Semua" ? "semua kelas" : `kelas ${selectedKelas}`;
+
     if (
       confirm(
-        "Yakin ingin menghapus semua data absensi di sheet 'absensi'? Header tidak akan terhapus."
+        `Yakin ingin menghapus semua data absensi ${kelasLabel} di bulan ${monthLabel} ${selectedYear}?\n\nTindakan ini tidak dapat dibatalkan!`
       )
     ) {
       setIsDeleting(true);
@@ -4410,20 +4485,24 @@ const DaftarHadirTab: React.FC<{
         mode: "no-cors",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "deleteAllAttendance",
-          sheetName: "absensi",
+          type: "deleteAttendanceByFilter",
+          kelas: selectedKelas === "Semua" ? "" : selectedKelas,
+          bulan: selectedMonth,
+          tahun: selectedYear,
         }),
       })
         .then(() => {
           alert(
-            "✅ Semua data absensi di sheet 'absensi' berhasil dihapus. Header tetap utuh."
+            `✅ Data absensi ${kelasLabel} di bulan ${monthLabel} ${selectedYear} berhasil dihapus.`
           );
           setAttendanceData([]);
           setEditedRecords({});
           fetchAttendanceData();
         })
         .catch(() =>
-          alert("❌ Gagal menghapus data absensi di sheet 'absensi'.")
+          alert(
+            `❌ Gagal menghapus data absensi ${kelasLabel} di bulan ${monthLabel} ${selectedYear}.`
+          )
         )
         .finally(() => setIsDeleting(false));
     }
@@ -4754,9 +4833,14 @@ const DaftarHadirTab: React.FC<{
         }
       }
 
-      doc.text("Guru Kelas,", rightColumnX + 25, currentY - 2, {
-        align: "center",
-      });
+      doc.text(
+        `${schoolData.statusGuru || "Guru Kelas"},`,
+        rightColumnX + 25,
+        currentY - 2,
+        {
+          align: "center",
+        }
+      );
       doc.text("", rightColumnX + 25, currentY + lineSpacing, {
         align: "center",
       });
