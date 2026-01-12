@@ -29,7 +29,7 @@ ChartJS.register(
 );
 
 const endpoint =
-  "https://script.google.com/macros/s/AKfycbxnk-ZR1d3l28XVZZEmeqg4YYBXWRXpIUwEglixSPwv0x5rVick7ID7rJrSyV4rNIwhCQ/exec";
+  "https://script.google.com/macros/s/AKfycbx0IygsLGjJ8LBVdj6KylGaCSl4_T0i7tim_x8L_2TbXMW78BlNvUcUgZr0ilwGoyeQHQ/exec";
 const SHEET_SEMESTER1 = "RekapSemester1";
 const SHEET_SEMESTER2 = "RekapSemester2";
 
@@ -38,6 +38,7 @@ interface Student {
   name: string | null | undefined;
   nisn: string | null | undefined;
   kelas: string | null | undefined;
+  jenisKelamin: string | null | undefined;
 }
 
 interface SchoolData {
@@ -527,6 +528,7 @@ const StudentDataTab: React.FC<{
   const [nisn, setNisn] = useState("");
   const [nama, setNama] = useState("");
   const [kelas, setKelas] = useState("");
+  const [jenisKelamin, setJenisKelamin] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedKelas, setSelectedKelas] = useState<string>("Semua");
 
@@ -535,6 +537,7 @@ const StudentDataTab: React.FC<{
   const [bulkNisn, setBulkNisn] = useState("");
   const [bulkNama, setBulkNama] = useState("");
   const [bulkKelas, setBulkKelas] = useState("");
+  const [bulkJenisKelamin, setBulkJenisKelamin] = useState("");
 
   // State untuk loading
   const [isSaving, setIsSaving] = useState(false);
@@ -543,7 +546,8 @@ const StudentDataTab: React.FC<{
   const [isDeleting, setIsDeleting] = useState(false);
 
   const handleSubmit = () => {
-    if (!nisn || !nama || !kelas) {
+    if (!nisn || !nama || !kelas || !jenisKelamin) {
+      // TAMBAHKAN || !jenisKelamin
       alert("⚠️ Semua field wajib diisi!");
       return;
     }
@@ -559,6 +563,7 @@ const StudentDataTab: React.FC<{
         nisn,
         nama,
         kelas,
+        jenisKelamin, // TAMBAHKAN BARIS INI
       }),
     })
       .then(() => {
@@ -566,6 +571,7 @@ const StudentDataTab: React.FC<{
         setNisn("");
         setNama("");
         setKelas("");
+        setJenisKelamin(""); // TAMBAHKAN BARIS INI
         onRefresh();
         setIsSaving(false);
       })
@@ -576,13 +582,17 @@ const StudentDataTab: React.FC<{
   };
 
   const handleBulkImport = () => {
-    // Validasi input
-    if (!bulkNisn.trim() || !bulkNama.trim() || !bulkKelas.trim()) {
+    if (
+      !bulkNisn.trim() ||
+      !bulkNama.trim() ||
+      !bulkKelas.trim() ||
+      !bulkJenisKelamin.trim()
+    ) {
+      // TAMBAHKAN || !bulkJenisKelamin.trim()
       alert("⚠️ Semua field data massal wajib diisi!");
       return;
     }
 
-    // Parse data dari textarea
     const nisnLines = bulkNisn
       .trim()
       .split("\n")
@@ -595,13 +605,19 @@ const StudentDataTab: React.FC<{
       .trim()
       .split("\n")
       .filter((line) => line.trim());
+    const jenisKelaminLines = bulkJenisKelamin
+      .trim()
+      .split("\n")
+      .filter((line) => line.trim()); // TAMBAHKAN BARIS INI
 
-    // Validasi jumlah baris harus sama
     if (
       nisnLines.length !== namaLines.length ||
-      namaLines.length !== kelasLines.length
+      namaLines.length !== kelasLines.length ||
+      kelasLines.length !== jenisKelaminLines.length // TAMBAHKAN BARIS INI
     ) {
-      alert("⚠️ Jumlah baris data NISN, Nama, dan Kelas harus sama!");
+      alert(
+        "⚠️ Jumlah baris data NISN, Nama, Kelas, dan Jenis Kelamin harus sama!"
+      ); // UPDATE PESAN
       return;
     }
 
@@ -622,6 +638,7 @@ const StudentDataTab: React.FC<{
       nisn: nisn.trim(),
       nama: namaLines[index].trim(),
       kelas: kelasLines[index].trim(),
+      jenisKelamin: jenisKelaminLines[index].trim(), // TAMBAHKAN BARIS INI
     }));
 
     // Kirim dalam satu request
@@ -645,6 +662,7 @@ const StudentDataTab: React.FC<{
         setBulkNisn("");
         setBulkNama("");
         setBulkKelas("");
+        setBulkJenisKelamin("");
         setShowBulkImport(false);
         onRefresh();
         setIsBulkSaving(false);
@@ -662,8 +680,20 @@ const StudentDataTab: React.FC<{
     const newNisn = prompt("Edit NISN:", student.nisn ?? undefined);
     const newName = prompt("Edit nama siswa:", student.name ?? undefined);
     const newClass = prompt("Edit kelas siswa:", student.kelas ?? undefined);
+    const jenisKelaminInput = prompt(
+      "Edit jenis kelamin (ketik L atau P):",
+      student.jenisKelamin ?? undefined
+    );
 
-    if (newNisn && newName && newClass) {
+    // Validasi input
+    const newJenisKelamin = jenisKelaminInput?.toUpperCase().trim();
+    if (newJenisKelamin && !["L", "P"].includes(newJenisKelamin)) {
+      alert("❌ Jenis kelamin harus L atau P!");
+      return;
+    }
+
+    if (newNisn && newName && newClass && newJenisKelamin) {
+      // TAMBAHKAN && newJenisKelamin
       setIsEditing(true);
 
       fetch(endpoint, {
@@ -676,6 +706,7 @@ const StudentDataTab: React.FC<{
           nisnBaru: newNisn,
           nama: newName,
           kelas: newClass,
+          jenisKelamin: newJenisKelamin, // TAMBAHKAN BARIS INI
         }),
       })
         .then(() => {
@@ -766,6 +797,16 @@ const StudentDataTab: React.FC<{
             className="w-full border border-gray-300 px-4 py-2 rounded-lg"
             disabled={isSaving}
           />
+          <select
+            value={jenisKelamin}
+            onChange={(e) => setJenisKelamin(e.target.value)}
+            className="w-full border border-gray-300 px-4 py-2 rounded-lg"
+            disabled={isSaving}
+          >
+            <option value="">Pilih Jenis Kelamin</option>
+            <option value="L">L - Laki-laki</option>
+            <option value="P">P - Perempuan</option>
+          </select>
         </div>
         <div className="flex justify-center gap-4">
           <button
@@ -855,6 +896,19 @@ const StudentDataTab: React.FC<{
                 disabled={isBulkSaving}
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Jenis Kelamin (L/P, satu per baris)
+              </label>
+              <textarea
+                placeholder="L&#10;P&#10;L"
+                value={bulkJenisKelamin}
+                onChange={(e) => setBulkJenisKelamin(e.target.value)}
+                className="w-full border border-gray-300 px-4 py-2 rounded-lg h-32 resize-none"
+                rows={6}
+                disabled={isBulkSaving}
+              />
+            </div>
           </div>
 
           <div className="flex justify-center gap-4">
@@ -939,7 +993,9 @@ const StudentDataTab: React.FC<{
                 <div>
                   <p className="font-medium text-gray-800">{s.name || "N/A"}</p>
                   <p className="text-sm text-gray-600">
-                    NISN: {s.nisn || "N/A"} | Kelas: {s.kelas || "N/A"}
+                    NISN: {s.nisn || "N/A"} | Kelas: {s.kelas || "N/A"} | Jenis
+                    Kelamin: {s.jenisKelamin || "N/A"}{" "}
+                    {/* TAMBAHKAN | Jenis Kelamin: {s.jenisKelamin || "N/A"} */}
                   </p>
                 </div>
                 <div className="flex gap-2">
@@ -4288,6 +4344,28 @@ const DaftarHadirTab: React.FC<{
     };
   };
 
+  const getGenderSummary = () => {
+    let totalLakiLaki = 0;
+    let totalPerempuan = 0;
+
+    filteredStudents.forEach((student) => {
+      const jenisKelamin = String(student.jenisKelamin || "")
+        .trim()
+        .toUpperCase();
+      if (jenisKelamin === "L" || jenisKelamin === "LAKI-LAKI") {
+        totalLakiLaki++;
+      } else if (jenisKelamin === "P" || jenisKelamin === "PEREMPUAN") {
+        totalPerempuan++;
+      }
+    });
+
+    return {
+      lakiLaki: totalLakiLaki,
+      perempuan: totalPerempuan,
+      total: totalLakiLaki + totalPerempuan,
+    };
+  };
+
   const handleStatusChange = (
     student: Student,
     day: number,
@@ -4517,6 +4595,9 @@ const DaftarHadirTab: React.FC<{
 
     doc.setFont("Times", "roman");
 
+    // TAMBAHKAN PERHITUNGAN GENDER SUMMARY
+    const genderSummary = getGenderSummary();
+
     // Title
     const monthLabel =
       months.find((m) => m.value === selectedMonth)?.label || "";
@@ -4717,6 +4798,46 @@ const DaftarHadirTab: React.FC<{
           }
         }
       },
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+
+    // Tabel Jumlah Siswa Berdasarkan Gender
+    doc.setFontSize(10);
+    doc.setFont("Times", "bold");
+    doc.text("Jumlah Siswa:", margin, currentY);
+    currentY += 7;
+
+    autoTable(doc, {
+      head: [["Laki-laki", "Perempuan", "Total Siswa"]],
+      body: [
+        [genderSummary.lakiLaki, genderSummary.perempuan, genderSummary.total],
+      ],
+      startY: currentY,
+      theme: "grid",
+      styles: {
+        font: "Times",
+        fontSize: 9,
+        cellPadding: 3,
+        halign: "center",
+        valign: "middle",
+      },
+      headStyles: {
+        fillColor: [200, 200, 255],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        halign: "center",
+      },
+      bodyStyles: {
+        fillColor: [240, 240, 255],
+        fontStyle: "bold",
+      },
+      columnStyles: {
+        0: { cellWidth: 50 },
+        1: { cellWidth: 50 },
+        2: { cellWidth: 50 },
+      },
+      margin: { left: margin, right: margin },
     });
 
     currentY = (doc as any).lastAutoTable.finalY + 10;
@@ -5356,6 +5477,38 @@ const DaftarHadirTab: React.FC<{
               </tr>
             </tfoot>
           </table>
+          {/* TAMBAHKAN BAGIAN INI - Info Jumlah Siswa Berdasarkan Gender */}
+          <div className="mt-6 bg-gray-50 border border-gray-300 rounded-lg p-4">
+            <h4 className="text-sm font-semibold text-gray-700 mb-3 text-center">
+              📊 Informasi Jumlah Siswa
+            </h4>
+            <div className="grid grid-cols-3 gap-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                <div className="text-blue-600 font-bold text-2xl">
+                  {getGenderSummary().lakiLaki}
+                </div>
+                <div className="text-blue-700 text-sm font-medium">
+                  Laki-laki
+                </div>
+              </div>
+              <div className="bg-pink-50 border border-pink-200 rounded-lg p-3 text-center">
+                <div className="text-pink-600 font-bold text-2xl">
+                  {getGenderSummary().perempuan}
+                </div>
+                <div className="text-pink-700 text-sm font-medium">
+                  Perempuan
+                </div>
+              </div>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
+                <div className="text-purple-600 font-bold text-2xl">
+                  {getGenderSummary().total}
+                </div>
+                <div className="text-purple-700 text-sm font-medium">
+                  Total Siswa
+                </div>
+              </div>
+            </div>
+          </div>
           {Object.keys(editedRecords).length > 0 && (
             <div className="mt-6 flex justify-center gap-4">
               <button
