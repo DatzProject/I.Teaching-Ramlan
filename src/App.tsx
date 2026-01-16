@@ -29,7 +29,7 @@ ChartJS.register(
 );
 
 const endpoint =
-  "https://script.google.com/macros/s/AKfycbx0IygsLGjJ8LBVdj6KylGaCSl4_T0i7tim_x8L_2TbXMW78BlNvUcUgZr0ilwGoyeQHQ/exec";
+  "https://script.google.com/macros/s/AKfycbxa3HPc3sEiEwwTXCMM4TqMzffy63iwUM_PDkiu2qGDMDbIL5dMt9NJLo8u8TzdFOzYyw/exec";
 const SHEET_SEMESTER1 = "RekapSemester1";
 const SHEET_SEMESTER2 = "RekapSemester2";
 
@@ -50,6 +50,7 @@ interface SchoolData {
   ttdGuru: string;
   namaKota: string;
   statusGuru: string;
+  namaSekolah: string;
 }
 
 type AttendanceStatus = "Hadir" | "Izin" | "Sakit" | "Alpha";
@@ -111,6 +112,11 @@ interface SemesterRecap {
   persenHadir: number;
 }
 
+interface TanggalMerah {
+  tanggal: string;
+  deskripsi: string;
+}
+
 const formatDateDDMMYYYY = (isoDate: string): string => {
   const [year, month, day] = isoDate.split("-");
   return `${day}/${month}/${year}`;
@@ -140,6 +146,7 @@ const SchoolDataTab: React.FC<{
   const guruSigCanvas = useRef<SignatureCanvas>(null);
   const [namaKota, setNamaKota] = useState("");
   const [statusGuru, setStatusGuru] = useState("Guru Kelas");
+  const [namaSekolah, setNamaSekolah] = useState("");
 
   useEffect(() => {
     fetch(`${endpoint}?action=schoolData`)
@@ -159,6 +166,7 @@ const SchoolDataTab: React.FC<{
           setTtdGuru(record.ttdGuru);
           setNamaKota(record.namaKota);
           setStatusGuru(record.statusGuru || "Guru Kelas");
+          setNamaSekolah(record.namaSekolah || "");
         } else {
           setSchoolData(null);
         }
@@ -188,6 +196,7 @@ const SchoolDataTab: React.FC<{
       ttdGuru: ttdGuru || "", // Sudah benar - bisa kosong
       namaKota: namaKota || "",
       statusGuru: statusGuru || "Guru Kelas",
+      namaSekolah: namaSekolah || "",
     };
 
     fetch(endpoint, {
@@ -263,6 +272,19 @@ const SchoolDataTab: React.FC<{
           🏫 Data Sekolah
         </h2>
         <div className="grid grid-cols-1 gap-4 mb-6">
+          <div>
+            <h3 className="text-lg font-semibold text-gray-700 mb-2">
+              Nama Sekolah
+            </h3>
+            <input
+              type="text"
+              placeholder="Nama Sekolah"
+              value={namaSekolah}
+              onChange={(e) => setNamaSekolah(e.target.value)}
+              className="w-full border border-gray-300 px-4 py-2 rounded-lg mb-2"
+              disabled={isSaving}
+            />
+          </div>
           <div>
             <h3 className="text-lg font-semibold text-gray-700 mb-2">
               Kota/Kabupaten
@@ -3713,6 +3735,7 @@ const StudentAttendanceApp: React.FC = () => {
     | "graph"
     | "semesterRecap"
     | "daftarHadir"
+    | "tanggalMerah"
     | "clearData"
   >("studentData");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -3805,6 +3828,7 @@ const StudentAttendanceApp: React.FC = () => {
           { tab: "semesterRecap", label: "📚 Rekap Semester" },
           { tab: "graph", label: "📈 Grafik" },
           { tab: "daftarHadir", label: "📜 Riwayat Absen" },
+          { tab: "tanggalMerah", label: "📅 Data Tanggal Merah" },
           { tab: "clearData", label: "🗑️ Hapus Data" },
         ].map(({ tab, label }) => (
           <button
@@ -3895,6 +3919,9 @@ const StudentAttendanceApp: React.FC = () => {
           {activeTab === "daftarHadir" && (
             <DaftarHadirTab students={students} uniqueClasses={uniqueClasses} />
           )}
+          {activeTab === "tanggalMerah" && (
+            <TanggalMerahTab onRefresh={handleRefresh} />
+          )}
           {activeTab === "clearData" && <ClearDataTab />}
         </div>
       </main>
@@ -3943,6 +3970,16 @@ const DaftarHadirTab: React.FC<{
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
   const [showModal, setShowModal] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [tanggalMerahList, setTanggalMerahList] = useState<TanggalMerah[]>([]);
+  const [loadingTanggalMerah, setLoadingTanggalMerah] =
+    useState<boolean>(false);
+  const [sundayDays, setSundayDays] = useState<Set<number>>(new Set());
+
+  // Fungsi untuk mengecek apakah tanggal adalah hari Minggu
+  const isSunday = (day: number): boolean => {
+    const date = new Date(selectedYear, selectedMonth - 1, day);
+    return date.getDay() === 0; // 0 = Sunday
+  };
 
   const months = [
     { value: 1, label: "Januari" },
@@ -4207,6 +4244,17 @@ const DaftarHadirTab: React.FC<{
     }
   };
 
+  // Hitung hari Minggu di bulan terpilih
+  useEffect(() => {
+    const sundays = new Set<number>();
+    for (let day = 1; day <= daysInMonth; day++) {
+      if (isSunday(day)) {
+        sundays.add(day);
+      }
+    }
+    setSundayDays(sundays);
+  }, [selectedMonth, selectedYear, daysInMonth]);
+
   useEffect(() => {
     fetch(`${endpoint}?action=schoolData`)
       .then((res) => {
@@ -4283,6 +4331,50 @@ const DaftarHadirTab: React.FC<{
       });
   }, []);
 
+  // Fetch tanggal merah
+  useEffect(() => {
+    fetchTanggalMerah();
+  }, []);
+
+  const fetchTanggalMerah = async () => {
+    setLoadingTanggalMerah(true);
+    try {
+      const res = await fetch(`${endpoint}?action=tanggalMerah`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (data.success) {
+        console.log("Tanggal merah loaded:", data.data);
+        setTanggalMerahList(data.data || []);
+      } else {
+        console.error("Gagal memuat tanggal merah:", data.message);
+        setTanggalMerahList([]);
+      }
+    } catch (error) {
+      console.error("Error fetch tanggal merah:", error);
+    } finally {
+      setLoadingTanggalMerah(false);
+    }
+  };
+
+  // Helper function to check if a date is a tanggal merah
+  const isTanggalMerah = (day: number): boolean => {
+    const dateStr = `${String(day).padStart(2, "0")}/${String(
+      selectedMonth
+    ).padStart(2, "0")}/${selectedYear}`;
+
+    return tanggalMerahList.some((tm) => tm.tanggal === dateStr);
+  };
+
+  // Helper function to get deskripsi for a tanggal merah
+  const getTanggalMerahDeskripsi = (day: number): string => {
+    const dateStr = `${String(day).padStart(2, "0")}/${String(
+      selectedMonth
+    ).padStart(2, "0")}/${selectedYear}`;
+
+    const found = tanggalMerahList.find((tm) => tm.tanggal === dateStr);
+    return found ? found.deskripsi : "";
+  };
+
   // Filter data absensi yang valid (tidak ada formula atau error)
   const filterValidAttendance = (
     data: AttendanceHistory[]
@@ -4337,10 +4429,10 @@ const DaftarHadirTab: React.FC<{
       totalI,
       totalA,
       grandTotal,
-      percentH: grandTotal > 0 ? ((totalH / grandTotal) * 100).toFixed(1) : "0",
-      percentS: grandTotal > 0 ? ((totalS / grandTotal) * 100).toFixed(1) : "0",
-      percentI: grandTotal > 0 ? ((totalI / grandTotal) * 100).toFixed(1) : "0",
-      percentA: grandTotal > 0 ? ((totalA / grandTotal) * 100).toFixed(1) : "0",
+      percentH: grandTotal > 0 ? ((totalH / grandTotal) * 100).toFixed(0) : "0",
+      percentS: grandTotal > 0 ? ((totalS / grandTotal) * 100).toFixed(0) : "0",
+      percentI: grandTotal > 0 ? ((totalI / grandTotal) * 100).toFixed(0) : "0",
+      percentA: grandTotal > 0 ? ((totalA / grandTotal) * 100).toFixed(0) : "0",
     };
   };
 
@@ -4587,7 +4679,11 @@ const DaftarHadirTab: React.FC<{
   };
 
   const downloadPDF = async () => {
-    const doc = new jsPDF("landscape");
+    const doc = new jsPDF({
+      orientation: "landscape",
+      unit: "mm",
+      format: "legal", // Legal: 215.9 x 355.6 mm
+    });
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 14;
     const lineSpacing = 5;
@@ -4595,24 +4691,32 @@ const DaftarHadirTab: React.FC<{
 
     doc.setFont("Times", "roman");
 
-    // TAMBAHKAN PERHITUNGAN GENDER SUMMARY
-    const genderSummary = getGenderSummary();
-
-    // Title
+    // Title - 1 baris saja
     const monthLabel =
       months.find((m) => m.value === selectedMonth)?.label || "";
-    const title = `DAFTAR HADIR SISWA KELAS ${selectedKelas} ${monthLabel.toUpperCase()} ${selectedYear}`;
-    doc.setFontSize(14);
+    const namaSekolah = schoolData?.namaSekolah || "UPT SDN 13 BATANG";
+
+    // Hitung posisi tengah tabel (bukan tengah kertas)
+    const tableStartX = margin - 7; // Sesuaikan dengan margin tabel Anda
+    const mainTableWidth = pageWidth - 2 * margin; // Lebar total tabel utama
+    const tableCenterX = tableStartX + mainTableWidth / 2;
+
+    // Judul dalam 1 baris
+    const title = `DAFTAR HADIR SISWA KELAS ${selectedKelas}  ${namaSekolah}  ${monthLabel.toUpperCase()} ${selectedYear}`;
+
+    doc.setFontSize(12); // Ukuran font lebih kecil agar muat 1 baris
     doc.setFont("Times", "bold");
-    doc.text(title, pageWidth / 2, currentY, { align: "center" });
-    currentY += 10;
+    doc.text(title, tableCenterX, currentY, { align: "center" });
+
+    currentY += 10; // Spacing setelah judul (1 baris saja)
 
     // Headers
     const headers = [
       [
         { content: "No", rowSpan: 2 },
-        { content: "No INDUK", rowSpan: 2 },
+        { content: "NISN", rowSpan: 2 },
         { content: "NAMA", rowSpan: 2 },
+        { content: "L/P", rowSpan: 2 },
         ...Array.from({ length: daysInMonth }, (_, i) => ({
           content: (i + 1).toString(),
           rowSpan: 2,
@@ -4632,10 +4736,21 @@ const DaftarHadirTab: React.FC<{
       if (!cached) return [];
 
       const { attendance, counts } = cached;
+
+      // ========== TAMBAHKAN KODE BARU INI ==========
+      const jenisKelamin =
+        student.jenisKelamin === "L" || student.jenisKelamin === "LAKI-LAKI"
+          ? "L"
+          : student.jenisKelamin === "P" || student.jenisKelamin === "PEREMPUAN"
+          ? "P"
+          : "-";
+      // ========== AKHIR KODE BARU ==========
+
       return [
         index + 1,
         student.nisn || "N/A",
         student.name || "N/A",
+        jenisKelamin,
         ...Array.from(
           { length: daysInMonth },
           (_, day) => attendance[day + 1] || "-"
@@ -4653,10 +4768,9 @@ const DaftarHadirTab: React.FC<{
     const totalRow = [
       {
         content: "TOTAL",
-        colSpan: 3,
+        colSpan: 4 + daysInMonth, // ← UBAH: Gabungkan dari No, NISN, Nama, L/P sampai tanggal terakhir
         styles: { halign: "center" as const, fontStyle: "bold" as const },
       },
-      ...Array.from({ length: daysInMonth }, () => "-"),
       totalSummary.totalH,
       totalSummary.totalS,
       totalSummary.totalI,
@@ -4665,11 +4779,10 @@ const DaftarHadirTab: React.FC<{
 
     const percentTotalRow = [
       {
-        content: "PERSEN",
-        colSpan: 3,
+        content: "PERSENTASE BULANAN",
+        colSpan: 4 + daysInMonth, // ← UBAH: Gabungkan dari No, NISN, Nama, L/P sampai tanggal terakhir
         styles: { halign: "center" as const, fontStyle: "bold" as const },
       },
-      ...Array.from({ length: daysInMonth }, () => "-"),
       `${totalSummary.percentH}%`,
       `${totalSummary.percentS}%`,
       `${totalSummary.percentI}%`,
@@ -4683,7 +4796,7 @@ const DaftarHadirTab: React.FC<{
     const jumlahHadirRow = [
       {
         content: "Jumlah Hadir",
-        colSpan: 3,
+        colSpan: 4,
         styles: { halign: "center" as const, fontStyle: "bold" as const },
       },
       ...Array.from({ length: daysInMonth }, (_, day) => {
@@ -4700,7 +4813,7 @@ const DaftarHadirTab: React.FC<{
     const persenHadirRow = [
       {
         content: "% Hadir",
-        colSpan: 3,
+        colSpan: 4,
         styles: { halign: "center" as const, fontStyle: "bold" as const },
       },
       ...Array.from({ length: daysInMonth }, (_, day) => {
@@ -4729,11 +4842,14 @@ const DaftarHadirTab: React.FC<{
         percentTotalRow,
       ],
       startY: currentY,
+      showHead: "firstPage",
+      margin: { left: 8, right: 8 },
       theme: "grid",
+
       styles: {
         font: "Times",
-        fontSize: 6,
-        cellPadding: 1,
+        fontSize: 7,
+        cellPadding: 1.5,
         halign: "center",
         valign: "middle",
       },
@@ -4741,25 +4857,27 @@ const DaftarHadirTab: React.FC<{
         fillColor: [255, 255, 0],
         textColor: [0, 0, 0],
         fontStyle: "bold",
-        fontSize: 6,
+        fontSize: 7,
         halign: "center",
         valign: "middle",
       },
       alternateRowStyles: { fillColor: [240, 240, 240] },
+
       columnStyles: {
-        0: { cellWidth: 7, halign: "center" },
-        1: { cellWidth: 16, halign: "center" },
-        2: { cellWidth: 40, halign: "left" },
+        0: { cellWidth: 7, halign: "center" }, // No
+        1: { cellWidth: 16, halign: "center" }, // NISN
+        2: { cellWidth: 60, halign: "left" }, // Nama
+        3: { cellWidth: 8, halign: "center" },
         ...Object.assign(
           {},
           ...Array.from({ length: daysInMonth }, (_, i) => ({
-            [i + 3]: { cellWidth: 6, halign: "center" },
+            [i + 4]: { cellWidth: 6, halign: "center" },
           }))
         ),
-        [3 + daysInMonth]: { cellWidth: 7, halign: "center" },
-        [4 + daysInMonth]: { cellWidth: 7, halign: "center" },
-        [5 + daysInMonth]: { cellWidth: 7, halign: "center" },
-        [6 + daysInMonth]: { cellWidth: 7, halign: "center" },
+        [4 + daysInMonth]: { cellWidth: 10, halign: "center" },
+        [5 + daysInMonth]: { cellWidth: 10, halign: "center" },
+        [6 + daysInMonth]: { cellWidth: 10, halign: "center" },
+        [7 + daysInMonth]: { cellWidth: 10, halign: "center" },
       },
       didParseCell: function (data) {
         // Styling khusus untuk baris "Jumlah Hadir" dan "% Hadir"
@@ -4769,80 +4887,201 @@ const DaftarHadirTab: React.FC<{
           data.cell.styles.fontStyle = "bold";
         }
 
-        // TAMBAHAN BARU: Styling untuk kolom tanggal yang tidak ada data di HEADER
+        // Styling untuk kolom tanggal di HEADER
         if (
           data.row.section === "head" &&
-          data.column.index >= 3 &&
-          data.column.index < 3 + daysInMonth
+          data.column.index >= 4 &&
+          data.column.index < 4 + daysInMonth
         ) {
-          const dayNum = data.column.index - 2;
-          const stats = attendanceByDateMemo[dayNum] || { hadir: 0, total: 0 }; // UBAH BARIS INI
+          const dayNum = data.column.index - 3;
+          const stats = attendanceByDateMemo[dayNum] || { hadir: 0, total: 0 };
 
-          if (stats.total === 0) {
-            data.cell.styles.fillColor = [255, 200, 200];
+          // Check tanggal merah
+          const dateStr = `${String(dayNum).padStart(2, "0")}/${String(
+            selectedMonth
+          ).padStart(2, "0")}/${selectedYear}`;
+          const isTglMerah = tanggalMerahList.some(
+            (tm) => tm.tanggal === dateStr
+          );
+
+          // ✅ TAMBAHAN BARU: Check hari Minggu
+          const date = new Date(selectedYear, selectedMonth - 1, dayNum);
+          const isSundayDay = date.getDay() === 0;
+
+          // ✅ PRIORITAS: Minggu > Tanggal Merah > Tidak Ada Data
+          if (isSundayDay) {
+            // WARNA ABU-ABU untuk hari Minggu (sama dengan bg-gray-300)
+            data.cell.styles.fillColor = [211, 211, 211];
+            data.cell.styles.textColor = [0, 0, 0]; // Hitam
+            data.cell.styles.fontStyle = "bold";
+          } else if (isTglMerah) {
+            // WARNA MERAH LEBIH GELAP untuk tanggal merah
+            data.cell.styles.fillColor = [220, 53, 69];
+            data.cell.styles.textColor = [255, 255, 255]; // Putih
+            data.cell.styles.fontStyle = "bold";
+          }
+          {
           }
         }
 
-        // TAMBAHAN BARU: Styling untuk cell data siswa pada tanggal tanpa data di BODY
+        // Styling untuk cell data siswa di BODY
         if (
           data.row.section === "body" &&
           data.row.index < body.length &&
-          data.column.index >= 3 &&
-          data.column.index < 3 + daysInMonth
+          data.column.index >= 4 &&
+          data.column.index < 4 + daysInMonth
         ) {
-          const dayNum = data.column.index - 2;
-          const stats = attendanceByDateMemo[dayNum] || { hadir: 0, total: 0 }; // UBAH BARIS INI
+          const dayNum = data.column.index - 3;
+          const stats = attendanceByDateMemo[dayNum] || { hadir: 0, total: 0 };
 
-          if (stats.total === 0) {
-            data.cell.styles.fillColor = [255, 220, 220];
+          // Cek apakah hari Minggu
+          const date = new Date(selectedYear, selectedMonth - 1, dayNum);
+          const isSundayDay = date.getDay() === 0;
+
+          // Cek tanggal merah
+          const dateStr = `${String(dayNum).padStart(2, "0")}/${String(
+            selectedMonth
+          ).padStart(2, "0")}/${selectedYear}`;
+          const isTglMerah = tanggalMerahList.some(
+            (tm) => tm.tanggal === dateStr
+          );
+
+          if (isSundayDay) {
+            // WARNA ABU-ABU GELAP untuk hari Minggu (sama seperti header)
+            data.cell.styles.fillColor = [211, 211, 211]; // ← SESUAIKAN DI SINI
+            data.cell.styles.textColor = [0, 0, 0];
+          } else if (isTglMerah) {
+            data.cell.styles.fillColor = [220, 53, 69];
+          } // Jika stats.total === 0 dan bukan tanggal merah → biarkan default (tidak set fillColor)
+        }
+
+        // ========== KODE BARU: Styling untuk footer rows pada tanggal merah ==========
+        if (
+          data.row.section === "body" &&
+          data.row.index >= body.length && // Footer rows (Jumlah Hadir, % Hadir, TOTAL, PERSEN)
+          data.column.index >= 4 &&
+          data.column.index < 4 + daysInMonth
+        ) {
+          const dayNum = data.column.index - 3;
+
+          // Check if it's Sunday
+          const date = new Date(selectedYear, selectedMonth - 1, dayNum);
+          const isSundayDay = date.getDay() === 0;
+
+          // Check if it's tanggal merah
+          const dateStr = `${String(dayNum).padStart(2, "0")}/${String(
+            selectedMonth
+          ).padStart(2, "0")}/${selectedYear}`;
+          const isTglMerah = tanggalMerahList.some(
+            (tm) => tm.tanggal === dateStr
+          );
+
+          // ✅ PRIORITAS: Minggu > Tanggal Merah
+          if (isSundayDay) {
+            // Background abu-abu gelap untuk footer pada hari Minggu
+            data.cell.styles.fillColor = [211, 211, 211];
+            data.cell.styles.textColor = [0, 0, 0];
+          } else if (isTglMerah) {
+            // Background merah untuk footer pada tanggal merah
+            data.cell.styles.fillColor = [220, 53, 69];
+          }
+
+          // Khusus untuk baris "% Hadir" (index kedua setelah body)
+          if (data.row.index === body.length + 1) {
+            data.cell.styles.fontSize = 6; // Ubah dari 7 ke 6 atau lebih kecil
           }
         }
+        // ========== AKHIR KODE BARU ==========
       },
     });
 
-    currentY = (doc as any).lastAutoTable.finalY + 10;
+    currentY = (doc as any).lastAutoTable.finalY + 8;
 
-    // Tabel Jumlah Siswa Berdasarkan Gender
+    // ✅ TAMBAHKAN CEK HALAMAN BARU DI SINI
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const bottomMargin = 20; // Margin bawah halaman
+    const spaceNeededForFooter = 60; // Ruang yang dibutuhkan untuk tanda tangan + tabel jumlah siswa
+    const spaceNeededForTable = 20; // Ruang untuk tabel jumlah siswa saja
+
+    // Cek apakah ada cukup ruang untuk tabel jumlah siswa
+    if (currentY + spaceNeededForTable > pageHeight - bottomMargin) {
+      doc.addPage(); // Tambah halaman baru
+      currentY = margin; // Reset posisi Y ke margin atas
+    }
+
+    // TABEL BARU: Informasi Jumlah Siswa (LEBIH KECIL - POSISI KIRI)
+    const genderSummary = getGenderSummary();
+
     doc.setFontSize(10);
     doc.setFont("Times", "bold");
-    doc.text("Jumlah Siswa:", margin, currentY);
-    currentY += 7;
+    doc.text("JUMLAH SISWA", margin - 7, currentY, {
+      align: "left",
+    });
+    currentY += 3;
+
+    // Hitung lebar tabel yang lebih kecil
+    const tableWidth = (pageWidth - 2 * margin) * 0.4; // 40% lebar halaman
 
     autoTable(doc, {
-      head: [["Laki-laki", "Perempuan", "Total Siswa"]],
+      head: [["LAKI-LAKI", "PEREMPUAN", "TOTAL SISWA"]],
       body: [
-        [genderSummary.lakiLaki, genderSummary.perempuan, genderSummary.total],
+        [
+          genderSummary.lakiLaki.toString(),
+          genderSummary.perempuan.toString(),
+          genderSummary.total.toString(),
+        ],
       ],
       startY: currentY,
+      margin: { left: margin - 7, right: pageWidth - margin - tableWidth },
+      tableWidth: tableWidth,
       theme: "grid",
       styles: {
         font: "Times",
-        fontSize: 9,
-        cellPadding: 3,
+        fontSize: 7,
+        cellPadding: 1,
         halign: "center",
         valign: "middle",
+        lineWidth: 0.5,
       },
       headStyles: {
-        fillColor: [200, 200, 255],
+        fillColor: [255, 255, 255],
         textColor: [0, 0, 0],
         fontStyle: "bold",
-        halign: "center",
+        lineWidth: 1,
       },
       bodyStyles: {
-        fillColor: [240, 240, 255],
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
         fontStyle: "bold",
+        fontSize: 10,
+        lineWidth: 1,
       },
       columnStyles: {
-        0: { cellWidth: 50 },
-        1: { cellWidth: 50 },
-        2: { cellWidth: 50 },
+        0: {
+          cellWidth: tableWidth / 3,
+          fillColor: [255, 255, 255],
+        },
+        1: {
+          cellWidth: tableWidth / 3,
+          fillColor: [255, 255, 255],
+        },
+        2: {
+          cellWidth: tableWidth / 3,
+          fillColor: [255, 255, 255],
+        },
       },
-      margin: { left: margin, right: margin },
     });
 
     currentY = (doc as any).lastAutoTable.finalY + 10;
 
-    // Footer: School data, place, date, signatures (TETAP SAMA seperti sebelumnya)
+    // ✅ TAMBAHKAN CEK HALAMAN BARU UNTUK FOOTER JUGA
+    // Cek apakah ada cukup ruang untuk footer (tanda tangan)
+    if (currentY + spaceNeededForFooter > pageHeight - bottomMargin) {
+      doc.addPage();
+      currentY = margin;
+    }
+
+    // Footer: School data, place, date, signatures
     if (schoolData) {
       doc.setFontSize(10);
       doc.setFont("Times", "roman");
@@ -4855,7 +5094,7 @@ const DaftarHadirTab: React.FC<{
       const placeDateText = `${
         schoolData.namaKota || "Makassar"
       }, ${formattedDate}`;
-      const rightColumnX = pageWidth - margin - 50;
+      const rightColumnX = pageWidth / 2 + 80; // 👈 DIUBAH - posisi guru digeser ke kiri
       doc.text(placeDateText, rightColumnX + 25, currentY - 1, {
         align: "center",
       });
@@ -5099,6 +5338,37 @@ const DaftarHadirTab: React.FC<{
           </div>
         </div>
 
+        {/* Legenda Warna */}
+        <div className="mb-4 bg-gray-50 border border-gray-300 rounded-lg p-4">
+          <h4 className="text-sm font-semibold text-gray-700 mb-3">
+            📌 Keterangan Warna:
+          </h4>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-gray-300 border border-gray-300 rounded"></div>
+              <span className="text-xs text-gray-700">
+                Hari Minggu (Disabled)
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-red-500 border border-gray-300 rounded"></div>
+              <span className="text-xs text-gray-700">
+                Tanggal Merah (Libur)
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-white border border-gray-300 rounded"></div>
+              <span className="text-xs text-gray-700">
+                Tidak Ada Data Absensi
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-yellow-100 border border-gray-300 rounded"></div>
+              <span className="text-xs text-gray-700">Data Sedang Diedit</span>
+            </div>
+          </div>
+        </div>
+
         <div className="overflow-auto relative" style={{ maxHeight: "70vh" }}>
           <style>
             {`
@@ -5106,14 +5376,14 @@ const DaftarHadirTab: React.FC<{
     position: sticky;
     top: 0;
     z-index: 30;
-    background: #f3f4f6;
+    background: #f3f4f6 !important;
   }
   
   .attendance-table thead tr:last-child th {
     position: sticky;
     top: 33px;
     z-index: 30;
-    background: #f3f4f6;
+    background: #f3f4f6 !important;
   
   .attendance-table th.freeze-no,
   .attendance-table td.freeze-no {
@@ -5158,6 +5428,25 @@ const DaftarHadirTab: React.FC<{
   .attendance-table tbody tr:nth-child(even) td.freeze-nama:hover {
     background: #dbeafe !important;
   }
+
+  .attendance-table th.freeze-jk,
+  .attendance-table td.freeze-jk {
+    position: sticky;
+    left: 130px; /* Sesuaikan dengan lebar kolom No + Nama */
+    z-index: 25;
+    background: #f3f4f6 !important;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+    min-width: 40px;
+    max-width: 40px;
+  }
+  
+  .attendance-table td.freeze-jk {
+    background: white !important;
+  }
+  
+  .attendance-table tbody tr:nth-child(even) td.freeze-jk {
+    background: #f9fafb !important;
+  }
   
   .attendance-table thead tr:first-child th.freeze-no,
   .attendance-table thead tr:last-child th.freeze-no {
@@ -5170,9 +5459,21 @@ const DaftarHadirTab: React.FC<{
     z-index: 40;
     background: #f3f4f6 !important;
   }
+
+  .attendance-table thead tr:first-child th.freeze-jk,
+  .attendance-table thead tr:last-child th.freeze-jk {
+    z-index: 40;
+    background: #f3f4f6 !important;
+  }
   .attendance-table tfoot td.freeze-no {
     position: sticky;
     left: 0;
+    z-index: 25;
+    box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+  }
+  .attendance-table tfoot td.freeze-jk {
+    position: sticky;
+    left: 130px;
     z-index: 25;
     box-shadow: 2px 0 5px rgba(0,0,0,0.1);
   }
@@ -5184,16 +5485,36 @@ const DaftarHadirTab: React.FC<{
               <tr className="bg-gray-100">
                 <th className="freeze-no border px-2 py-1 text-sm">No</th>
                 <th className="freeze-nama border px-2 py-1 text-sm">NAMA</th>
+                <th className="freeze-jk border px-2 py-1 text-sm text-center">
+                  L/P
+                </th>{" "}
+                {/* KOLOM BARU */}
                 {Array.from({ length: daysInMonth }, (_, i) => {
                   const dayNum = i + 1;
                   const hasData = !daysWithNoData.has(dayNum);
+                  const isTglMerah = isTanggalMerah(dayNum);
+                  const deskripsi = getTanggalMerahDeskripsi(dayNum);
+                  const isSundayDay = isSunday(dayNum); // TAMBAHKAN INI
 
                   return (
                     <th
                       key={i}
                       className={`border px-1 py-1 text-sm ${
-                        !hasData ? "bg-red-200" : ""
+                        isSundayDay
+                          ? "bg-gray-300 text-black font-bold"
+                          : isTglMerah
+                          ? "bg-red-500 text-black font-bold"
+                          : !hasData
+                          ? "bg-gray" // ✅ UBAH: Putih untuk tidak ada data
+                          : ""
                       }`}
+                      title={
+                        isSundayDay
+                          ? "Hari Minggu"
+                          : isTglMerah
+                          ? deskripsi
+                          : ""
+                      } // UBAH: Tambah tooltip untuk Minggu
                     >
                       {String(dayNum).padStart(2, "0")}
                     </th>
@@ -5206,9 +5527,26 @@ const DaftarHadirTab: React.FC<{
               <tr className="bg-gray-100">
                 <th className="freeze-no border px-2 py-1 text-sm"></th>
                 <th className="freeze-nama border px-2 py-1 text-sm"></th>
-                {Array.from({ length: daysInMonth }, (_, i) => (
-                  <th key={i} className="border px-1 py-1 text-sm"></th>
-                ))}
+                <th className="freeze-jk border px-2 py-1 text-sm"></th>{" "}
+                {/* KOLOM BARU */}
+                {Array.from({ length: daysInMonth }, (_, i) => {
+                  const dayNum = i + 1;
+                  const isTglMerah = isTanggalMerah(dayNum); // TAMBAHKAN INI
+                  const isSundayDay = isSunday(dayNum);
+
+                  return (
+                    <th
+                      key={i}
+                      className={`border px-1 py-1 text-sm ${
+                        isSundayDay
+                          ? "bg-gray-300"
+                          : isTglMerah
+                          ? "bg-red-500"
+                          : "" // WARNA MERAH untuk baris kedua header
+                      }`}
+                    ></th>
+                  );
+                })}
                 <th className="border px-2 py-1 text-sm">H</th>
                 <th className="border px-2 py-1 text-sm">S</th>
                 <th className="border px-2 py-1 text-sm">I</th>
@@ -5237,6 +5575,17 @@ const DaftarHadirTab: React.FC<{
                     >
                       {student.name || "N/A"}
                     </td>
+                    {/* ========== TAMBAHKAN CELL BARU INI ========== */}
+                    <td className="freeze-jk border px-2 py-1 text-xs text-center font-semibold">
+                      {student.jenisKelamin === "L" ||
+                      student.jenisKelamin === "LAKI-LAKI"
+                        ? "L"
+                        : student.jenisKelamin === "P" ||
+                          student.jenisKelamin === "PEREMPUAN"
+                        ? "P"
+                        : "-"}
+                    </td>
+                    {/* ========== AKHIR KODE BARU ========== */}
                     {Array.from({ length: daysInMonth }, (_, day) => {
                       const currentValue = attendance[day + 1] || "";
                       const key = `${student.id}_${day + 1}`;
@@ -5244,6 +5593,8 @@ const DaftarHadirTab: React.FC<{
                       const dayNum = day + 1;
 
                       const hasDataOnThisDate = !daysWithNoData.has(dayNum);
+                      const isTglMerah = isTanggalMerah(dayNum);
+                      const isSundayDay = isSunday(dayNum);
 
                       const getFullStatus = (
                         code: string
@@ -5281,10 +5632,14 @@ const DaftarHadirTab: React.FC<{
                         <td
                           key={day}
                           className={`border px-1 py-1 text-center text-xs ${
-                            isEdited
+                            isSundayDay
+                              ? "bg-gray-300" // Background abu-abu untuk Minggu
+                              : isEdited
                               ? "bg-yellow-100"
+                              : isTglMerah
+                              ? "bg-red-500" // Background merah muda untuk tanggal merah
                               : !hasDataOnThisDate
-                              ? "bg-red-100"
+                              ? "bg-white" // ✅ UBAH: Putih untuk tidak ada data
                               : ""
                           }`}
                         >
@@ -5312,7 +5667,7 @@ const DaftarHadirTab: React.FC<{
                                   : ""
                                 : currentValue
                             )}`}
-                            disabled={isSaving}
+                            disabled={isSaving || isSundayDay || isTglMerah}
                             style={{
                               textAlign: "center",
                               textAlignLast: "center",
@@ -5358,7 +5713,7 @@ const DaftarHadirTab: React.FC<{
               <tr className="bg-blue-50 font-semibold">
                 <td
                   className="freeze-no border px-2 py-1 text-xs text-center"
-                  colSpan={2}
+                  colSpan={3}
                 >
                   Jumlah Hadir
                 </td>
@@ -5368,10 +5723,19 @@ const DaftarHadirTab: React.FC<{
                     hadir: 0,
                     total: 0,
                   };
+                  const isTglMerah = isTanggalMerah(dayNum);
+                  const isSundayDay = isSunday(dayNum);
+
                   return (
                     <td
                       key={day}
-                      className="border px-1 py-1 text-center text-xs"
+                      className={`border px-1 py-1 text-center text-xs ${
+                        isSundayDay
+                          ? "bg-gray-300"
+                          : isTglMerah
+                          ? "bg-red-500"
+                          : ""
+                      }`}
                     >
                       {stats.total > 0 ? stats.hadir : ""}
                     </td>
@@ -5389,7 +5753,7 @@ const DaftarHadirTab: React.FC<{
               <tr className="bg-green-50 font-semibold">
                 <td
                   className="freeze-no border px-2 py-1 text-xs text-center"
-                  colSpan={2}
+                  colSpan={3}
                 >
                   % Hadir
                 </td>
@@ -5403,10 +5767,19 @@ const DaftarHadirTab: React.FC<{
                     stats.total > 0
                       ? ((stats.hadir / stats.total) * 100).toFixed(0) + "%"
                       : "";
+                  const isTglMerah = isTanggalMerah(dayNum);
+                  const isSundayDay = isSunday(dayNum);
+
                   return (
                     <td
                       key={day}
-                      className="border px-1 py-1 text-center text-xs"
+                      className={`border px-1 py-1 text-center text-xs ${
+                        isSundayDay
+                          ? "bg-gray-300" // TAMBAHKAN
+                          : isTglMerah
+                          ? "bg-red-500"
+                          : ""
+                      }`}
                     >
                       {percentage}
                     </td>
@@ -5420,19 +5793,13 @@ const DaftarHadirTab: React.FC<{
                 </td>
               </tr>
 
-              {/* BARIS BARU: Total Keseluruhan */}
+              {/* BARIS BARU: Total Keseluruhan - UBAH BAGIAN INI */}
               <tr className="bg-yellow-50 font-bold">
                 <td
                   className="freeze-no border px-2 py-1 text-xs text-center"
-                  colSpan={2}
+                  colSpan={3 + daysInMonth} // ← UBAH: Gabungkan kolom dari No sampai tanggal terakhir
                 >
                   TOTAL
-                </td>
-                <td
-                  className="border px-1 py-1 text-xs text-center"
-                  colSpan={daysInMonth}
-                >
-                  -
                 </td>
                 <td className="border px-2 py-1 text-xs text-center text-green-700">
                   {getTotalSummary().totalH}
@@ -5448,19 +5815,13 @@ const DaftarHadirTab: React.FC<{
                 </td>
               </tr>
 
-              {/* BARIS BARU: Persentase Keseluruhan */}
+              {/* BARIS BARU: Persentase Keseluruhan - UBAH BAGIAN INI */}
               <tr className="bg-orange-50 font-bold">
                 <td
                   className="freeze-no border px-2 py-1 text-xs text-center"
-                  colSpan={2}
+                  colSpan={3 + daysInMonth} // ← UBAH: Gabungkan kolom dari No sampai tanggal terakhir
                 >
-                  PERSEN
-                </td>
-                <td
-                  className="border px-1 py-1 text-xs text-center"
-                  colSpan={daysInMonth}
-                >
-                  -
+                  PERSENTASE BULANAN
                 </td>
                 <td className="border px-2 py-1 text-xs text-center text-green-700">
                   {getTotalSummary().percentH}%
@@ -5477,38 +5838,47 @@ const DaftarHadirTab: React.FC<{
               </tr>
             </tfoot>
           </table>
-          {/* TAMBAHKAN BAGIAN INI - Info Jumlah Siswa Berdasarkan Gender */}
-          <div className="mt-6 bg-gray-50 border border-gray-300 rounded-lg p-4">
-            <h4 className="text-sm font-semibold text-gray-700 mb-3 text-center">
-              📊 Informasi Jumlah Siswa
-            </h4>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
-                <div className="text-blue-600 font-bold text-2xl">
-                  {getGenderSummary().lakiLaki}
-                </div>
-                <div className="text-blue-700 text-sm font-medium">
-                  Laki-laki
-                </div>
-              </div>
-              <div className="bg-pink-50 border border-pink-200 rounded-lg p-3 text-center">
-                <div className="text-pink-600 font-bold text-2xl">
-                  {getGenderSummary().perempuan}
-                </div>
-                <div className="text-pink-700 text-sm font-medium">
-                  Perempuan
-                </div>
-              </div>
-              <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-center">
-                <div className="text-purple-600 font-bold text-2xl">
-                  {getGenderSummary().total}
-                </div>
-                <div className="text-purple-700 text-sm font-medium">
-                  Total Siswa
-                </div>
-              </div>
-            </div>
+
+          {/* TABEL BARU: Informasi Siswa */}
+          <div className="mt-6">
+            <table className="min-w-full border-collapse border border-gray-200">
+              <thead>
+                <tr className="bg-purple-100">
+                  <th
+                    className="border px-4 py-2 text-sm font-bold"
+                    colSpan={3}
+                  >
+                    📊 Informasi Jumlah Siswa
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="bg-purple-50">
+                  <td className="border px-4 py-2 text-sm font-semibold text-center">
+                    Laki-laki
+                  </td>
+                  <td className="border px-4 py-2 text-sm font-semibold text-center">
+                    Perempuan
+                  </td>
+                  <td className="border px-4 py-2 text-sm font-semibold text-center">
+                    Total Siswa
+                  </td>
+                </tr>
+                <tr className="bg-white">
+                  <td className="border px-4 py-2 text-center text-lg font-bold text-blue-700">
+                    {getGenderSummary().lakiLaki}
+                  </td>
+                  <td className="border px-4 py-2 text-center text-lg font-bold text-pink-700">
+                    {getGenderSummary().perempuan}
+                  </td>
+                  <td className="border px-4 py-2 text-center text-lg font-bold text-purple-700">
+                    {getGenderSummary().total}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
+
           {Object.keys(editedRecords).length > 0 && (
             <div className="mt-6 flex justify-center gap-4">
               <button
@@ -5624,6 +5994,278 @@ const DaftarHadirTab: React.FC<{
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+const TanggalMerahTab: React.FC<{
+  onRefresh: () => void;
+}> = ({ onRefresh }) => {
+  const [tanggalMerahList, setTanggalMerahList] = useState<TanggalMerah[]>([]);
+  const [tanggal, setTanggal] = useState("");
+  const [deskripsi, setDeskripsi] = useState("");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+
+  // Fetch data tanggal merah
+  useEffect(() => {
+    fetchTanggalMerah();
+  }, []);
+
+  const fetchTanggalMerah = () => {
+    setLoading(true);
+    fetch(`${endpoint}?action=tanggalMerah`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (data.success) {
+          setTanggalMerahList(data.data || []);
+        } else {
+          alert("❌ Gagal memuat data tanggal merah: " + data.message);
+          setTanggalMerahList([]);
+        }
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error("Error fetch:", error);
+        alert("❌ Gagal memuat data tanggal merah. Cek console untuk detail.");
+        setLoading(false);
+      });
+  };
+
+  const handleSubmit = () => {
+    if (!tanggal || !deskripsi) {
+      alert("⚠️ Tanggal dan Deskripsi wajib diisi!");
+      return;
+    }
+
+    setIsSaving(true);
+
+    fetch(endpoint, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "tanggalMerah",
+        tanggal: formatDateDDMMYYYY(tanggal),
+        deskripsi,
+      }),
+    })
+      .then(() => {
+        alert("✅ Tanggal merah berhasil ditambahkan!");
+        setTanggal("");
+        setDeskripsi("");
+        fetchTanggalMerah();
+        onRefresh();
+        setIsSaving(false);
+      })
+      .catch(() => {
+        alert("❌ Gagal menambahkan tanggal merah.");
+        setIsSaving(false);
+      });
+  };
+
+  const handleEdit = (index: number) => {
+    const item = tanggalMerahList[index];
+    // Convert DD/MM/YYYY to YYYY-MM-DD for date input
+    const [day, month, year] = item.tanggal.split("/");
+    setTanggal(`${year}-${month}-${day}`);
+    setDeskripsi(item.deskripsi);
+    setEditingIndex(index);
+  };
+
+  const handleUpdate = () => {
+    if (!tanggal || !deskripsi || editingIndex === null) {
+      alert("⚠️ Tanggal dan Deskripsi wajib diisi!");
+      return;
+    }
+
+    const oldItem = tanggalMerahList[editingIndex];
+    setIsSaving(true);
+
+    fetch(endpoint, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "editTanggalMerah",
+        tanggalLama: oldItem.tanggal,
+        tanggalBaru: formatDateDDMMYYYY(tanggal),
+        deskripsi,
+      }),
+    })
+      .then(() => {
+        alert("✅ Tanggal merah berhasil diperbarui!");
+        setTanggal("");
+        setDeskripsi("");
+        setEditingIndex(null);
+        fetchTanggalMerah();
+        onRefresh();
+        setIsSaving(false);
+      })
+      .catch(() => {
+        alert("❌ Gagal memperbarui tanggal merah.");
+        setIsSaving(false);
+      });
+  };
+
+  const handleDelete = (tanggalToDelete: string) => {
+    if (!confirm(`Yakin ingin menghapus tanggal merah: ${tanggalToDelete}?`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+
+    fetch(endpoint, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "deleteTanggalMerah",
+        tanggal: tanggalToDelete,
+      }),
+    })
+      .then(() => {
+        alert("✅ Tanggal merah berhasil dihapus!");
+        fetchTanggalMerah();
+        onRefresh();
+        setIsDeleting(false);
+      })
+      .catch(() => {
+        alert("❌ Gagal menghapus tanggal merah.");
+        setIsDeleting(false);
+      });
+  };
+
+  const handleCancel = () => {
+    setTanggal("");
+    setDeskripsi("");
+    setEditingIndex(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-500">Memuat data tanggal merah...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto" style={{ paddingBottom: "70px" }}>
+      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+        <h2 className="text-xl font-bold mb-4 text-center text-blue-600">
+          {editingIndex !== null
+            ? "Edit Tanggal Merah"
+            : "Tambah Tanggal Merah"}
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+          <input
+            type="date"
+            value={tanggal}
+            onChange={(e) => setTanggal(e.target.value)}
+            className="w-full border border-gray-300 px-4 py-2 rounded-lg"
+            disabled={isSaving}
+          />
+          <input
+            type="text"
+            placeholder="Deskripsi (cth: Hari Raya Nyepi)"
+            value={deskripsi}
+            onChange={(e) => setDeskripsi(e.target.value)}
+            className="w-full border border-gray-300 px-4 py-2 rounded-lg"
+            disabled={isSaving}
+          />
+        </div>
+        <div className="flex justify-center gap-4">
+          {editingIndex !== null ? (
+            <>
+              <button
+                onClick={handleUpdate}
+                disabled={isSaving}
+                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                  isSaving
+                    ? "bg-blue-400 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700"
+                } text-white`}
+              >
+                {isSaving ? "⏳ Menyimpan..." : "💾 Update"}
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={isSaving}
+                className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium"
+              >
+                ❌ Batal
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={isSaving}
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                isSaving
+                  ? "bg-blue-400 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              } text-white`}
+            >
+              {isSaving ? "⏳ Menyimpan..." : "➕ Tambah Tanggal Merah"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <h3 className="text-lg font-semibold text-gray-700 mb-4">
+          Daftar Tanggal Merah ({tanggalMerahList.length})
+        </h3>
+        {tanggalMerahList.length === 0 ? (
+          <p className="text-center text-gray-500 py-8">
+            Belum ada data tanggal merah.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {tanggalMerahList.map((item, index) => (
+              <div
+                key={index}
+                className="flex justify-between items-center bg-gray-50 border border-gray-200 px-4 py-3 rounded-lg"
+              >
+                <div>
+                  <p className="font-medium text-gray-800">{item.tanggal}</p>
+                  <p className="text-sm text-gray-600">{item.deskripsi}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEdit(index)}
+                    disabled={isSaving || isDeleting}
+                    className={`text-xs px-3 py-1 rounded transition-colors ${
+                      isSaving || isDeleting
+                        ? "bg-yellow-400 cursor-not-allowed"
+                        : "bg-yellow-500 hover:bg-yellow-600"
+                    } text-white`}
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item.tanggal)}
+                    disabled={isSaving || isDeleting}
+                    className={`text-xs px-3 py-1 rounded transition-colors ${
+                      isSaving || isDeleting
+                        ? "bg-red-400 cursor-not-allowed"
+                        : "bg-red-500 hover:bg-red-600"
+                    } text-white`}
+                  >
+                    🗑️ Hapus
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
