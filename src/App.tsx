@@ -29,7 +29,7 @@ ChartJS.register(
 );
 
 const endpoint =
-  "https://script.google.com/macros/s/AKfycbxa3HPc3sEiEwwTXCMM4TqMzffy63iwUM_PDkiu2qGDMDbIL5dMt9NJLo8u8TzdFOzYyw/exec";
+  "https://script.google.com/macros/s/AKfycby9BMXpUMxzqwP89KWIGfQ4_XHsNKhVLrhzAV6XyO1k0_0CBSUV6Chac9rD_piPiK8-zA/exec";
 const SHEET_SEMESTER1 = "RekapSemester1";
 const SHEET_SEMESTER2 = "RekapSemester2";
 
@@ -115,6 +115,7 @@ interface SemesterRecap {
 interface TanggalMerah {
   tanggal: string;
   deskripsi: string;
+  tanggalAkhir?: string;
 }
 
 const formatDateDDMMYYYY = (isoDate: string): string => {
@@ -1694,7 +1695,8 @@ const AttendanceTab: React.FC<{
 const MonthlyRecapTab: React.FC<{
   onRefresh: () => void;
   uniqueClasses: string[];
-}> = ({ onRefresh, uniqueClasses }) => {
+  students: Student[];
+}> = ({ onRefresh, uniqueClasses, students }) => {
   const [recapData, setRecapData] = useState<MonthlyRecap[]>([]);
   const [selectedKelas, setSelectedKelas] = useState<string>("Semua");
 
@@ -1938,21 +1940,27 @@ const MonthlyRecapTab: React.FC<{
   };
 
   const downloadPDF = async () => {
-    // Tambahkan async untuk await
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 14;
     const lineSpacing = 5;
     let currentY = margin;
 
-    // Set font to Times for consistency with typical formal documents
     doc.setFont("Times", "roman");
 
-    // Title
-    const title = `REKAP ABSENSI SISWA KELAS ${selectedKelas} ${selectedBulan.toUpperCase()} 2024`;
-    doc.setFontSize(14);
+    // Title - Format sama dengan Daftar Hadir
+    const namaSekolah = schoolData?.namaSekolah || "UPT SDN 13 BATANG";
+
+    // ✅ TAMBAHKAN: Ambil tahun dari selectedDate
+    const tahunDariTanggal = new Date(selectedDate).getFullYear();
+
+    // Judul dalam 1 baris - gunakan tahunDariTanggal
+    const title = `REKAP ABSENSI SISWA KELAS ${selectedKelas}  ${namaSekolah}  ${selectedBulan.toUpperCase()} ${tahunDariTanggal}`;
+
+    doc.setFontSize(12); // Ukuran font sama dengan daftar hadir
     doc.setFont("Times", "bold");
     doc.text(title, pageWidth / 2, currentY, { align: "center" });
+
     currentY += 10;
 
     // Table headers and data
@@ -2051,6 +2059,94 @@ const MonthlyRecapTab: React.FC<{
     });
 
     // Update currentY after the table
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+
+    // ✅ TAMBAHAN BARU: Tabel Informasi Jumlah Siswa
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const bottomMargin = 20;
+    const spaceNeededForStudentTable = 20;
+    const spaceNeededForSignatures = 60; // Ruang untuk tanda tangan
+
+    // ✅ CEK APAKAH TANDA TANGAN + TABEL SISWA MUAT DI HALAMAN INI
+    // Cek apakah ada cukup ruang untuk tabel jumlah siswa DAN tanda tangan
+    if (
+      currentY + spaceNeededForStudentTable + spaceNeededForSignatures >
+      pageHeight - bottomMargin
+    ) {
+      doc.addPage();
+      currentY = margin;
+    }
+
+    // Hitung jumlah siswa berdasarkan jenis kelamin
+    const genderSummary = filteredRecapData.reduce(
+      (acc, student) => {
+        // Ambil data siswa dari filteredRecapData untuk mendapatkan jenis kelamin
+        const studentData = students.find((s) => s.name === student.nama);
+        if (studentData) {
+          const jenisKelamin = String(studentData.jenisKelamin || "")
+            .trim()
+            .toUpperCase();
+          if (jenisKelamin === "L" || jenisKelamin === "LAKI-LAKI") {
+            acc.lakiLaki++;
+          } else if (jenisKelamin === "P" || jenisKelamin === "PEREMPUAN") {
+            acc.perempuan++;
+          }
+        }
+        return acc;
+      },
+      { lakiLaki: 0, perempuan: 0 }
+    );
+
+    const totalSiswa = genderSummary.lakiLaki + genderSummary.perempuan;
+
+    doc.setFontSize(10);
+    doc.setFont("Times", "bold");
+    doc.text("JUMLAH SISWA", margin, currentY, { align: "left" });
+    currentY += 3;
+
+    const tableWidth = (pageWidth - 2 * margin) * 0.4;
+
+    autoTable(doc, {
+      head: [["LAKI-LAKI", "PEREMPUAN", "TOTAL SISWA"]],
+      body: [
+        [
+          genderSummary.lakiLaki.toString(),
+          genderSummary.perempuan.toString(),
+          totalSiswa.toString(),
+        ],
+      ],
+      startY: currentY,
+      margin: { left: margin, right: pageWidth - margin - tableWidth },
+      tableWidth: tableWidth,
+      theme: "grid",
+      styles: {
+        font: "Times",
+        fontSize: 7,
+        cellPadding: 1,
+        halign: "center",
+        valign: "middle",
+        lineWidth: 0.5,
+      },
+      headStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        lineWidth: 1,
+      },
+      bodyStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        fontSize: 10,
+        lineWidth: 1,
+      },
+      columnStyles: {
+        0: { cellWidth: tableWidth / 3, fillColor: [255, 255, 255] },
+        1: { cellWidth: tableWidth / 3, fillColor: [255, 255, 255] },
+        2: { cellWidth: tableWidth / 3, fillColor: [255, 255, 255] },
+      },
+    });
+
     currentY = (doc as any).lastAutoTable.finalY + 10;
 
     // Add school data (Principal and Teacher details)
@@ -2723,8 +2819,12 @@ const GraphTab: React.FC<{
   );
 };
 
-const SemesterRecapTab: React.FC<{ uniqueClasses: string[] }> = ({
+const SemesterRecapTab: React.FC<{
+  uniqueClasses: string[];
+  students: Student[]; // ✅ TAMBAHKAN INI
+}> = ({
   uniqueClasses,
+  students, // ✅ DAN INI
 }) => {
   const [recapData, setRecapData] = useState<SemesterRecap[]>([]);
   const [selectedKelas, setSelectedKelas] = useState<string>("Semua");
@@ -2950,7 +3050,6 @@ const SemesterRecapTab: React.FC<{ uniqueClasses: string[] }> = ({
   };
 
   const downloadPDF = async () => {
-    // Tambahkan async untuk await
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 14;
@@ -2959,10 +3058,21 @@ const SemesterRecapTab: React.FC<{ uniqueClasses: string[] }> = ({
 
     doc.setFont("Times", "roman");
 
-    const title = `REKAP ABSENSI SISWA KELAS ${selectedKelas} ${selectedSemester.toUpperCase()} 2024`;
-    doc.setFontSize(14);
+    // Title - Format sama dengan Daftar Hadir
+    const namaSekolah = schoolData?.namaSekolah || "UPT SDN 13 BATANG";
+
+    // ✅ TAMBAHKAN: Ambil tahun dari selectedDate
+    const tahunDariTanggal = new Date(selectedDate).getFullYear();
+
+    // Judul dalam 1 baris dengan format Semester - gunakan tahunDariTanggal
+    const semesterLabel =
+      selectedSemester === "1" ? "SEMESTER 1" : "SEMESTER 2";
+    const title = `REKAP ABSENSI SISWA KELAS ${selectedKelas}  ${namaSekolah}  ${semesterLabel} ${tahunDariTanggal}`;
+
+    doc.setFontSize(12); // Ukuran font sama dengan daftar hadir
     doc.setFont("Times", "bold");
     doc.text(title, pageWidth / 2, currentY, { align: "center" });
+
     currentY += 10;
 
     const headers = [
@@ -3056,6 +3166,94 @@ const SemesterRecapTab: React.FC<{ uniqueClasses: string[] }> = ({
         5: { cellWidth: 20 }, // Izin
         6: { cellWidth: 20 }, // Sakit
         7: { cellWidth: 20 }, // % Hadir
+      },
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 10;
+
+    // ✅ TAMBAHAN BARU: Tabel Informasi Jumlah Siswa
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const bottomMargin = 20;
+    const spaceNeededForStudentTable = 20;
+    const spaceNeededForSignatures = 60; // Ruang untuk tanda tangan
+
+    // ✅ CEK APAKAH TANDA TANGAN + TABEL SISWA MUAT DI HALAMAN INI
+    // Cek apakah ada cukup ruang untuk tabel jumlah siswa DAN tanda tangan
+    if (
+      currentY + spaceNeededForStudentTable + spaceNeededForSignatures >
+      pageHeight - bottomMargin
+    ) {
+      doc.addPage();
+      currentY = margin;
+    }
+
+    // Hitung jumlah siswa berdasarkan jenis kelamin dari filteredRecapData
+    const genderSummary = filteredRecapData.reduce(
+      (acc, student) => {
+        // Cari data lengkap siswa untuk mendapatkan jenis kelamin
+        const studentData = students.find((s) => s.name === student.nama);
+        if (studentData) {
+          const jenisKelamin = String(studentData.jenisKelamin || "")
+            .trim()
+            .toUpperCase();
+          if (jenisKelamin === "L" || jenisKelamin === "LAKI-LAKI") {
+            acc.lakiLaki++;
+          } else if (jenisKelamin === "P" || jenisKelamin === "PEREMPUAN") {
+            acc.perempuan++;
+          }
+        }
+        return acc;
+      },
+      { lakiLaki: 0, perempuan: 0 }
+    );
+
+    const totalSiswa = genderSummary.lakiLaki + genderSummary.perempuan;
+
+    doc.setFontSize(10);
+    doc.setFont("Times", "bold");
+    doc.text("JUMLAH SISWA", margin, currentY, { align: "left" });
+    currentY += 3;
+
+    const tableWidth = (pageWidth - 2 * margin) * 0.4;
+
+    autoTable(doc, {
+      head: [["LAKI-LAKI", "PEREMPUAN", "TOTAL SISWA"]],
+      body: [
+        [
+          genderSummary.lakiLaki.toString(),
+          genderSummary.perempuan.toString(),
+          totalSiswa.toString(),
+        ],
+      ],
+      startY: currentY,
+      margin: { left: margin, right: pageWidth - margin - tableWidth },
+      tableWidth: tableWidth,
+      theme: "grid",
+      styles: {
+        font: "Times",
+        fontSize: 7,
+        cellPadding: 1,
+        halign: "center",
+        valign: "middle",
+        lineWidth: 0.5,
+      },
+      headStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        lineWidth: 1,
+      },
+      bodyStyles: {
+        fillColor: [255, 255, 255],
+        textColor: [0, 0, 0],
+        fontStyle: "bold",
+        fontSize: 10,
+        lineWidth: 1,
+      },
+      columnStyles: {
+        0: { cellWidth: tableWidth / 3, fillColor: [255, 255, 255] },
+        1: { cellWidth: tableWidth / 3, fillColor: [255, 255, 255] },
+        2: { cellWidth: tableWidth / 3, fillColor: [255, 255, 255] },
       },
     });
 
@@ -3910,11 +4108,15 @@ const StudentAttendanceApp: React.FC = () => {
             <MonthlyRecapTab
               onRefresh={handleRecapRefresh}
               uniqueClasses={uniqueClasses}
+              students={students} // ✅ TAMBAHKAN INI
             />
           )}
           {activeTab === "graph" && <GraphTab uniqueClasses={uniqueClasses} />}
           {activeTab === "semesterRecap" && (
-            <SemesterRecapTab uniqueClasses={uniqueClasses} />
+            <SemesterRecapTab
+              uniqueClasses={uniqueClasses}
+              students={students} // ✅ TAMBAHKAN INI
+            />
           )}
           {activeTab === "daftarHadir" && (
             <DaftarHadirTab students={students} uniqueClasses={uniqueClasses} />
@@ -3974,6 +4176,9 @@ const DaftarHadirTab: React.FC<{
   const [loadingTanggalMerah, setLoadingTanggalMerah] =
     useState<boolean>(false);
   const [sundayDays, setSundayDays] = useState<Set<number>>(new Set());
+  const [filteredTanggalMerah, setFilteredTanggalMerah] = useState<
+    TanggalMerah[]
+  >([]);
 
   // Fungsi untuk mengecek apakah tanggal adalah hari Minggu
   const isSunday = (day: number): boolean => {
@@ -4356,13 +4561,94 @@ const DaftarHadirTab: React.FC<{
     }
   };
 
+  // Filter tanggal merah berdasarkan bulan dan tahun yang dipilih
+  useEffect(() => {
+    const filtered = tanggalMerahList.filter((tm) => {
+      const [dayStart, monthStart, yearStart] = tm.tanggal
+        .split("/")
+        .map(Number);
+
+      // Jika tidak ada tanggal akhir, cek hanya tanggal mulai
+      if (!tm.tanggalAkhir) {
+        return monthStart === selectedMonth && yearStart === selectedYear;
+      }
+
+      // Jika ada tanggal akhir, cek apakah rentang mencakup bulan yang dipilih
+      const [dayEnd, monthEnd, yearEnd] = tm.tanggalAkhir
+        .split("/")
+        .map(Number);
+
+      const startDate = new Date(yearStart, monthStart - 1, dayStart);
+      const endDate = new Date(yearEnd, monthEnd - 1, dayEnd);
+      const currentMonthStart = new Date(selectedYear, selectedMonth - 1, 1);
+      const currentMonthEnd = new Date(selectedYear, selectedMonth, 0); // Last day of month
+
+      // Cek apakah rentang tanggal merah overlap dengan bulan yang dipilih
+      return startDate <= currentMonthEnd && endDate >= currentMonthStart;
+    });
+    setFilteredTanggalMerah(filtered);
+  }, [tanggalMerahList, selectedMonth, selectedYear]);
+
+  const isInDateRange = (
+    day: number,
+    startDate: string,
+    endDate?: string
+  ): boolean => {
+    const currentDate = `${String(day).padStart(2, "0")}/${String(
+      selectedMonth
+    ).padStart(2, "0")}/${selectedYear}`;
+
+    if (!endDate) {
+      return currentDate === startDate;
+    }
+
+    // Parse dates
+    const [d1, m1, y1] = startDate.split("/").map(Number);
+    const [d2, m2, y2] = endDate.split("/").map(Number);
+    const [dC, mC, yC] = currentDate.split("/").map(Number);
+
+    const start = new Date(y1, m1 - 1, d1);
+    const end = new Date(y2, m2 - 1, d2);
+    const current = new Date(yC, mC - 1, dC);
+
+    return current >= start && current <= end;
+  };
+
   // Helper function to check if a date is a tanggal merah
   const isTanggalMerah = (day: number): boolean => {
+    return tanggalMerahList.some((tm) => {
+      const isNotLiburSemester = !(
+        tm.deskripsi.toLowerCase().includes("libur akhir semester") ||
+        tm.deskripsi.toLowerCase().includes("libur semester")
+      );
+
+      if (!isNotLiburSemester) return false;
+
+      return isInDateRange(day, tm.tanggal, tm.tanggalAkhir);
+    });
+  };
+
+  // Helper function to check if a date is libur semester
+  const isLiburSemester = (day: number): boolean => {
+    return tanggalMerahList.some((tm) => {
+      const isLibur =
+        tm.deskripsi.toLowerCase().includes("libur akhir semester") ||
+        tm.deskripsi.toLowerCase().includes("libur semester");
+
+      if (!isLibur) return false;
+
+      return isInDateRange(day, tm.tanggal, tm.tanggalAkhir);
+    });
+  };
+
+  // Helper function to get deskripsi for libur semester
+  const getLiburSemesterDeskripsi = (day: number): string => {
     const dateStr = `${String(day).padStart(2, "0")}/${String(
       selectedMonth
     ).padStart(2, "0")}/${selectedYear}`;
 
-    return tanggalMerahList.some((tm) => tm.tanggal === dateStr);
+    const found = tanggalMerahList.find((tm) => tm.tanggal === dateStr);
+    return found ? found.deskripsi : "";
   };
 
   // Helper function to get deskripsi for a tanggal merah
@@ -4710,6 +4996,59 @@ const DaftarHadirTab: React.FC<{
 
     currentY += 10; // Spacing setelah judul (1 baris saja)
 
+    // TAMBAHKAN helper function untuk cek rentang tanggal di dalam downloadPDF
+    const isInDateRangePDF = (
+      day: number,
+      startDate: string,
+      endDate?: string
+    ): boolean => {
+      const currentDate = `${String(day).padStart(2, "0")}/${String(
+        selectedMonth
+      ).padStart(2, "0")}/${selectedYear}`;
+
+      if (!endDate) {
+        return currentDate === startDate;
+      }
+
+      // Parse dates
+      const [d1, m1, y1] = startDate.split("/").map(Number);
+      const [d2, m2, y2] = endDate.split("/").map(Number);
+      const [dC, mC, yC] = currentDate.split("/").map(Number);
+
+      const start = new Date(y1, m1 - 1, d1);
+      const end = new Date(y2, m2 - 1, d2);
+      const current = new Date(yC, mC - 1, dC);
+
+      return current >= start && current <= end;
+    };
+
+    // TAMBAHKAN helper untuk cek libur semester di PDF
+    const isLiburSemesterPDF = (day: number): boolean => {
+      return tanggalMerahList.some((tm) => {
+        const isLibur =
+          tm.deskripsi.toLowerCase().includes("libur akhir semester") ||
+          tm.deskripsi.toLowerCase().includes("libur semester");
+
+        if (!isLibur) return false;
+
+        return isInDateRangePDF(day, tm.tanggal, tm.tanggalAkhir);
+      });
+    };
+
+    // TAMBAHKAN helper untuk cek tanggal merah biasa di PDF
+    const isTanggalMerahPDF = (day: number): boolean => {
+      return tanggalMerahList.some((tm) => {
+        const isNotLiburSemester = !(
+          tm.deskripsi.toLowerCase().includes("libur akhir semester") ||
+          tm.deskripsi.toLowerCase().includes("libur semester")
+        );
+
+        if (!isNotLiburSemester) return false;
+
+        return isInDateRangePDF(day, tm.tanggal, tm.tanggalAkhir);
+      });
+    };
+
     // Headers
     const headers = [
       [
@@ -4894,33 +5233,27 @@ const DaftarHadirTab: React.FC<{
           data.column.index < 4 + daysInMonth
         ) {
           const dayNum = data.column.index - 3;
-          const stats = attendanceByDateMemo[dayNum] || { hadir: 0, total: 0 };
 
-          // Check tanggal merah
-          const dateStr = `${String(dayNum).padStart(2, "0")}/${String(
-            selectedMonth
-          ).padStart(2, "0")}/${selectedYear}`;
-          const isTglMerah = tanggalMerahList.some(
-            (tm) => tm.tanggal === dateStr
-          );
-
-          // ✅ TAMBAHAN BARU: Check hari Minggu
           const date = new Date(selectedYear, selectedMonth - 1, dayNum);
           const isSundayDay = date.getDay() === 0;
 
-          // ✅ PRIORITAS: Minggu > Tanggal Merah > Tidak Ada Data
+          // UBAH: Gunakan helper function yang baru
+          const isTglMerah = isTanggalMerahPDF(dayNum);
+          const isLiburSem = isLiburSemesterPDF(dayNum);
+
+          // ✅ PRIORITAS: Minggu > Libur Semester > Tanggal Merah
           if (isSundayDay) {
-            // WARNA ABU-ABU untuk hari Minggu (sama dengan bg-gray-300)
-            data.cell.styles.fillColor = [211, 211, 211];
-            data.cell.styles.textColor = [0, 0, 0]; // Hitam
+            data.cell.styles.fillColor = [220, 53, 69]; // ✅ Merah RGB
+            data.cell.styles.textColor = [255, 255, 255];
+            data.cell.styles.fontStyle = "bold";
+          } else if (isLiburSem) {
+            data.cell.styles.fillColor = [34, 197, 94];
+            data.cell.styles.textColor = [255, 255, 255];
             data.cell.styles.fontStyle = "bold";
           } else if (isTglMerah) {
-            // WARNA MERAH LEBIH GELAP untuk tanggal merah
-            data.cell.styles.fillColor = [220, 53, 69];
-            data.cell.styles.textColor = [255, 255, 255]; // Putih
+            data.cell.styles.fillColor = [211, 211, 211]; // ✅ Abu-abu RGB
+            data.cell.styles.textColor = [0, 0, 0];
             data.cell.styles.fontStyle = "bold";
-          }
-          {
           }
         }
 
@@ -4932,84 +5265,82 @@ const DaftarHadirTab: React.FC<{
           data.column.index < 4 + daysInMonth
         ) {
           const dayNum = data.column.index - 3;
-          const stats = attendanceByDateMemo[dayNum] || { hadir: 0, total: 0 };
 
-          // Cek apakah hari Minggu
           const date = new Date(selectedYear, selectedMonth - 1, dayNum);
           const isSundayDay = date.getDay() === 0;
 
-          // Cek tanggal merah
-          const dateStr = `${String(dayNum).padStart(2, "0")}/${String(
-            selectedMonth
-          ).padStart(2, "0")}/${selectedYear}`;
-          const isTglMerah = tanggalMerahList.some(
-            (tm) => tm.tanggal === dateStr
-          );
+          // UBAH: Gunakan helper function yang baru
+          const isTglMerah = isTanggalMerahPDF(dayNum);
+          const isLiburSem = isLiburSemesterPDF(dayNum);
 
           if (isSundayDay) {
-            // WARNA ABU-ABU GELAP untuk hari Minggu (sama seperti header)
-            data.cell.styles.fillColor = [211, 211, 211]; // ← SESUAIKAN DI SINI
-            data.cell.styles.textColor = [0, 0, 0];
-          } else if (isTglMerah) {
             data.cell.styles.fillColor = [220, 53, 69];
-          } // Jika stats.total === 0 dan bukan tanggal merah → biarkan default (tidak set fillColor)
+            data.cell.styles.textColor = [0, 0, 0];
+          } else if (isLiburSem) {
+            data.cell.styles.fillColor = [34, 197, 94]; // green-500
+          } else if (isTglMerah) {
+            data.cell.styles.fillColor = [211, 211, 211];
+          }
         }
 
-        // ========== KODE BARU: Styling untuk footer rows pada tanggal merah ==========
+        // Styling untuk footer rows pada tanggal merah
         if (
           data.row.section === "body" &&
-          data.row.index >= body.length && // Footer rows (Jumlah Hadir, % Hadir, TOTAL, PERSEN)
+          data.row.index >= body.length &&
           data.column.index >= 4 &&
           data.column.index < 4 + daysInMonth
         ) {
           const dayNum = data.column.index - 3;
 
-          // Check if it's Sunday
           const date = new Date(selectedYear, selectedMonth - 1, dayNum);
           const isSundayDay = date.getDay() === 0;
 
-          // Check if it's tanggal merah
-          const dateStr = `${String(dayNum).padStart(2, "0")}/${String(
-            selectedMonth
-          ).padStart(2, "0")}/${selectedYear}`;
-          const isTglMerah = tanggalMerahList.some(
-            (tm) => tm.tanggal === dateStr
-          );
+          // UBAH: Gunakan helper function yang baru
+          const isTglMerah = isTanggalMerahPDF(dayNum);
+          const isLiburSem = isLiburSemesterPDF(dayNum);
 
-          // ✅ PRIORITAS: Minggu > Tanggal Merah
+          // ✅ PRIORITAS: Minggu > Libur Semester > Tanggal Merah
           if (isSundayDay) {
-            // Background abu-abu gelap untuk footer pada hari Minggu
-            data.cell.styles.fillColor = [211, 211, 211];
-            data.cell.styles.textColor = [0, 0, 0];
-          } else if (isTglMerah) {
-            // Background merah untuk footer pada tanggal merah
             data.cell.styles.fillColor = [220, 53, 69];
+            data.cell.styles.textColor = [0, 0, 0];
+          } else if (isLiburSem) {
+            data.cell.styles.fillColor = [34, 197, 94]; // green-500
+          } else if (isTglMerah) {
+            data.cell.styles.fillColor = [211, 211, 211];
           }
 
-          // Khusus untuk baris "% Hadir" (index kedua setelah body)
           if (data.row.index === body.length + 1) {
-            data.cell.styles.fontSize = 6; // Ubah dari 7 ke 6 atau lebih kecil
+            data.cell.styles.fontSize = 6;
           }
         }
-        // ========== AKHIR KODE BARU ==========
       },
     });
 
     currentY = (doc as any).lastAutoTable.finalY + 8;
 
-    // ✅ TAMBAHKAN CEK HALAMAN BARU DI SINI
+    // ✅ PENGECEKAN LEBIH KETAT - Cek apakah footer (tanda tangan) akan terpotong
     const pageHeight = doc.internal.pageSize.getHeight();
-    const bottomMargin = 20; // Margin bawah halaman
-    const spaceNeededForFooter = 60; // Ruang yang dibutuhkan untuk tanda tangan + tabel jumlah siswa
-    const spaceNeededForTable = 20; // Ruang untuk tabel jumlah siswa saja
+    const bottomMargin = 20;
+    const spaceNeededForSignatures = 50; // Ruang untuk tanda tangan
+    const spaceNeededForStudentTable = 20; // Ruang untuk tabel jumlah siswa
+    const spaceNeededForTanggalMerahTable =
+      filteredTanggalMerah.length > 0
+        ? 10 + filteredTanggalMerah.length * 7
+        : 0;
 
-    // Cek apakah ada cukup ruang untuk tabel jumlah siswa
-    if (currentY + spaceNeededForTable > pageHeight - bottomMargin) {
-      doc.addPage(); // Tambah halaman baru
-      currentY = margin; // Reset posisi Y ke margin atas
+    // Total ruang yang dibutuhkan untuk semua footer
+    const totalFooterSpace =
+      spaceNeededForSignatures +
+      spaceNeededForStudentTable +
+      spaceNeededForTanggalMerahTable;
+
+    // ✅ JIKA TIDAK CUKUP RUANG UNTUK SEMUA FOOTER, PINDAH KE HALAMAN BARU
+    if (currentY + totalFooterSpace > pageHeight - bottomMargin) {
+      doc.addPage();
+      currentY = margin;
     }
 
-    // TABEL BARU: Informasi Jumlah Siswa (LEBIH KECIL - POSISI KIRI)
+    // TABEL JUMLAH SISWA (sekarang dijamin di halaman yang sama dengan tanda tangan)
     const genderSummary = getGenderSummary();
 
     doc.setFontSize(10);
@@ -5019,8 +5350,7 @@ const DaftarHadirTab: React.FC<{
     });
     currentY += 3;
 
-    // Hitung lebar tabel yang lebih kecil
-    const tableWidth = (pageWidth - 2 * margin) * 0.4; // 40% lebar halaman
+    const tableWidth = (pageWidth - 2 * margin) * 0.4;
 
     autoTable(doc, {
       head: [["LAKI-LAKI", "PEREMPUAN", "TOTAL SISWA"]],
@@ -5074,11 +5404,77 @@ const DaftarHadirTab: React.FC<{
 
     currentY = (doc as any).lastAutoTable.finalY + 10;
 
-    // ✅ TAMBAHKAN CEK HALAMAN BARU UNTUK FOOTER JUGA
-    // Cek apakah ada cukup ruang untuk footer (tanda tangan)
-    if (currentY + spaceNeededForFooter > pageHeight - bottomMargin) {
-      doc.addPage();
-      currentY = margin;
+    // TABEL KETERANGAN TANGGAL MERAH (masih di halaman yang sama)
+    if (filteredTanggalMerah.length > 0) {
+      doc.setFontSize(10);
+      doc.setFont("Times", "bold");
+      doc.text("KETERANGAN TANGGAL MERAH / LIBUR", margin - 7, currentY, {
+        align: "left",
+      });
+      currentY += 3;
+
+      const sortedTanggalMerah = [...filteredTanggalMerah].sort((a, b) => {
+        const [dayA, monthA, yearA] = a.tanggal.split("/").map(Number);
+        const [dayB, monthB, yearB] = b.tanggal.split("/").map(Number);
+        return (
+          new Date(yearA, monthA - 1, dayA).getTime() -
+          new Date(yearB, monthB - 1, dayB).getTime()
+        );
+      });
+
+      autoTable(doc, {
+        head: [["TANGGAL", "KETERANGAN"]],
+        body: sortedTanggalMerah.map((tm) => [
+          tm.tanggalAkhir ? `${tm.tanggal} - ${tm.tanggalAkhir}` : tm.tanggal,
+          tm.deskripsi,
+        ]),
+        startY: currentY,
+        margin: { left: margin - 7, right: margin - 7 },
+        theme: "grid",
+        styles: {
+          font: "Times",
+          fontSize: 8,
+          cellPadding: 1.5,
+          valign: "middle",
+          lineWidth: 0.5,
+        },
+        headStyles: {
+          fillColor: [254, 202, 202],
+          textColor: [0, 0, 0],
+          fontStyle: "bold",
+          halign: "center",
+          fontSize: 9,
+          lineWidth: 1,
+        },
+        bodyStyles: {
+          fillColor: [255, 255, 255],
+          textColor: [0, 0, 0],
+          lineWidth: 1,
+        },
+        alternateRowStyles: {
+          fillColor: [254, 226, 226],
+        },
+        columnStyles: {
+          0: {
+            cellWidth: 35,
+            halign: "center",
+            fontSize: 8,
+          },
+          1: {
+            cellWidth: 96,
+            halign: "left",
+            fontSize: 8,
+          },
+        },
+        tableWidth: "auto",
+        didDrawCell: function (data) {
+          if (data.column.index === 1 && data.cell.section === "body") {
+            data.cell.styles.cellWidth = 120;
+          }
+        },
+      });
+
+      currentY = (doc as any).lastAutoTable.finalY + 10;
     }
 
     // Footer: School data, place, date, signatures
@@ -5345,13 +5741,19 @@ const DaftarHadirTab: React.FC<{
           </h4>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-gray-300 border border-gray-300 rounded"></div>
+              <div className="w-6 h-6 bg-red-500 border border-gray-300 rounded"></div>
               <span className="text-xs text-gray-700">
                 Hari Minggu (Disabled)
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-red-500 border border-gray-300 rounded"></div>
+              <div className="w-6 h-6 bg-green-500 border border-gray-300 rounded"></div>
+              <span className="text-xs text-gray-700">
+                Libur Semester (Disabled)
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-gray-300 border border-gray-300 rounded"></div>
               <span className="text-xs text-gray-700">
                 Tanggal Merah (Libur)
               </span>
@@ -5494,27 +5896,31 @@ const DaftarHadirTab: React.FC<{
                   const hasData = !daysWithNoData.has(dayNum);
                   const isTglMerah = isTanggalMerah(dayNum);
                   const deskripsi = getTanggalMerahDeskripsi(dayNum);
-                  const isSundayDay = isSunday(dayNum); // TAMBAHKAN INI
-
+                  const isSundayDay = isSunday(dayNum);
+                  const isLiburSem = isLiburSemester(dayNum); // TAMBAHAN BARU
                   return (
                     <th
                       key={i}
                       className={`border px-1 py-1 text-sm ${
                         isSundayDay
-                          ? "bg-gray-300 text-black font-bold"
+                          ? "bg-red-500 text-black font-bold" // ✅ Ganti
+                          : isLiburSem
+                          ? "bg-green-500 text-black font-bold"
                           : isTglMerah
-                          ? "bg-red-500 text-black font-bold"
+                          ? "bg-gray-300 text-black font-bold" // ✅ Ganti
                           : !hasData
-                          ? "bg-gray" // ✅ UBAH: Putih untuk tidak ada data
+                          ? "bg-gray"
                           : ""
                       }`}
                       title={
                         isSundayDay
                           ? "Hari Minggu"
+                          : isLiburSem
+                          ? deskripsi // TOOLTIP LIBUR SEMESTER
                           : isTglMerah
                           ? deskripsi
                           : ""
-                      } // UBAH: Tambah tooltip untuk Minggu
+                      }
                     >
                       {String(dayNum).padStart(2, "0")}
                     </th>
@@ -5531,18 +5937,21 @@ const DaftarHadirTab: React.FC<{
                 {/* KOLOM BARU */}
                 {Array.from({ length: daysInMonth }, (_, i) => {
                   const dayNum = i + 1;
-                  const isTglMerah = isTanggalMerah(dayNum); // TAMBAHKAN INI
+                  const isTglMerah = isTanggalMerah(dayNum);
                   const isSundayDay = isSunday(dayNum);
+                  const isLiburSem = isLiburSemester(dayNum); // TAMBAHAN BARU
 
                   return (
                     <th
                       key={i}
                       className={`border px-1 py-1 text-sm ${
                         isSundayDay
-                          ? "bg-gray-300"
+                          ? "bg-red-500" // ✅ Ganti
+                          : isLiburSem
+                          ? "bg-green-500"
                           : isTglMerah
-                          ? "bg-red-500"
-                          : "" // WARNA MERAH untuk baris kedua header
+                          ? "bg-gray-300" // ✅ Ganti
+                          : ""
                       }`}
                     ></th>
                   );
@@ -5633,13 +6042,15 @@ const DaftarHadirTab: React.FC<{
                           key={day}
                           className={`border px-1 py-1 text-center text-xs ${
                             isSundayDay
-                              ? "bg-gray-300" // Background abu-abu untuk Minggu
+                              ? "bg-red-500" // ✅ Ganti
                               : isEdited
                               ? "bg-yellow-100"
+                              : isLiburSemester(day + 1)
+                              ? "bg-green-500"
                               : isTglMerah
-                              ? "bg-red-500" // Background merah muda untuk tanggal merah
+                              ? "bg-gray-300" // ✅ Ganti
                               : !hasDataOnThisDate
-                              ? "bg-white" // ✅ UBAH: Putih untuk tidak ada data
+                              ? "bg-white"
                               : ""
                           }`}
                         >
@@ -5667,7 +6078,12 @@ const DaftarHadirTab: React.FC<{
                                   : ""
                                 : currentValue
                             )}`}
-                            disabled={isSaving || isSundayDay || isTglMerah}
+                            disabled={
+                              isSaving ||
+                              isSundayDay ||
+                              isTglMerah ||
+                              isLiburSemester(day + 1)
+                            }
                             style={{
                               textAlign: "center",
                               textAlignLast: "center",
@@ -5725,15 +6141,18 @@ const DaftarHadirTab: React.FC<{
                   };
                   const isTglMerah = isTanggalMerah(dayNum);
                   const isSundayDay = isSunday(dayNum);
+                  const isLiburSem = isLiburSemester(dayNum); // TAMBAHAN BARU
 
                   return (
                     <td
                       key={day}
                       className={`border px-1 py-1 text-center text-xs ${
                         isSundayDay
-                          ? "bg-gray-300"
+                          ? "bg-red-500" // ✅ Ganti
+                          : isLiburSem
+                          ? "bg-green-500"
                           : isTglMerah
-                          ? "bg-red-500"
+                          ? "bg-gray-300" // ✅ Ganti
                           : ""
                       }`}
                     >
@@ -5769,15 +6188,18 @@ const DaftarHadirTab: React.FC<{
                       : "";
                   const isTglMerah = isTanggalMerah(dayNum);
                   const isSundayDay = isSunday(dayNum);
+                  const isLiburSem = isLiburSemester(dayNum); // TAMBAHAN BARU
 
                   return (
                     <td
                       key={day}
                       className={`border px-1 py-1 text-center text-xs ${
                         isSundayDay
-                          ? "bg-gray-300" // TAMBAHKAN
+                          ? "bg-red-500" // ✅ Ganti
+                          : isLiburSem
+                          ? "bg-green-500"
                           : isTglMerah
-                          ? "bg-red-500"
+                          ? "bg-gray-300" // ✅ Ganti
                           : ""
                       }`}
                     >
@@ -5878,6 +6300,155 @@ const DaftarHadirTab: React.FC<{
               </tbody>
             </table>
           </div>
+
+          {/* TABEL KETERANGAN TANGGAL MERAH */}
+          {filteredTanggalMerah.length > 0 && (
+            <div className="mt-6">
+              <table className="min-w-full border-collapse border border-gray-200">
+                <thead>
+                  <tr className="bg-red-100">
+                    <th
+                      className="border px-4 py-2 text-sm font-bold"
+                      colSpan={2}
+                    >
+                      📅 Keterangan Tanggal Merah / Libur
+                    </th>
+                  </tr>
+                  <tr className="bg-red-50">
+                    <td className="border px-4 py-2 text-sm font-semibold text-center">
+                      Tanggal
+                    </td>
+                    <td className="border px-4 py-2 text-sm font-semibold text-center">
+                      Keterangan
+                    </td>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredTanggalMerah
+                    .sort((a, b) => {
+                      // Sort by date
+                      const [dayA, monthA, yearA] = a.tanggal
+                        .split("/")
+                        .map(Number);
+                      const [dayB, monthB, yearB] = b.tanggal
+                        .split("/")
+                        .map(Number);
+                      return (
+                        new Date(yearA, monthA - 1, dayA).getTime() -
+                        new Date(yearB, monthB - 1, dayB).getTime()
+                      );
+                    })
+                    .map((tm, index) => {
+                      // TAMBAHKAN: Helper function untuk format rentang tanggal
+                      const formatDateRange = (
+                        startDate: string,
+                        endDate?: string
+                      ) => {
+                        if (!endDate) return startDate;
+
+                        const [dayStart, monthStart, yearStart] =
+                          startDate.split("/");
+                        const [dayEnd, monthEnd, yearEnd] = endDate.split("/");
+
+                        // Jika bulan dan tahun sama
+                        if (monthStart === monthEnd && yearStart === yearEnd) {
+                          return `${dayStart} - ${dayEnd}/${monthStart}/${yearStart}`;
+                        }
+                        // Jika tahun sama tapi bulan beda
+                        else if (yearStart === yearEnd) {
+                          return `${dayStart}/${monthStart} - ${dayEnd}/${monthEnd}/${yearEnd}`;
+                        }
+                        // Jika tahun berbeda
+                        else {
+                          return `${startDate} - ${endDate}`;
+                        }
+                      };
+
+                      return (
+                        <tr
+                          key={index}
+                          className={index % 2 === 0 ? "bg-white" : "bg-red-50"}
+                        >
+                          <td className="border px-4 py-2 text-center text-sm">
+                            {(() => {
+                              // Helper untuk menampilkan tanggal yang relevan dengan bulan dipilih
+                              if (!tm.tanggalAkhir) return tm.tanggal;
+
+                              const [dayStart, monthStart, yearStart] =
+                                tm.tanggal.split("/").map(Number);
+                              const [dayEnd, monthEnd, yearEnd] =
+                                tm.tanggalAkhir.split("/").map(Number);
+
+                              // Jika rentang dalam bulan yang sama
+                              if (
+                                monthStart === selectedMonth &&
+                                monthEnd === selectedMonth &&
+                                yearStart === selectedYear &&
+                                yearEnd === selectedYear
+                              ) {
+                                return formatDateRange(
+                                  tm.tanggal,
+                                  tm.tanggalAkhir
+                                );
+                              }
+
+                              // Jika rentang melewati beberapa bulan
+                              // Di bulan pertama: tampilkan "DD/MM/YYYY - Akhir Bulan"
+                              if (
+                                monthStart === selectedMonth &&
+                                yearStart === selectedYear
+                              ) {
+                                const lastDay = new Date(
+                                  selectedYear,
+                                  selectedMonth,
+                                  0
+                                ).getDate();
+                                return `${tm.tanggal} - ${String(
+                                  lastDay
+                                ).padStart(2, "0")}/${String(
+                                  selectedMonth
+                                ).padStart(2, "0")}/${selectedYear}`;
+                              }
+
+                              // Di bulan terakhir: tampilkan "Awal Bulan - DD/MM/YYYY"
+                              if (
+                                monthEnd === selectedMonth &&
+                                yearEnd === selectedYear
+                              ) {
+                                return `01/${String(selectedMonth).padStart(
+                                  2,
+                                  "0"
+                                )}/${selectedYear} - ${tm.tanggalAkhir}`;
+                              }
+
+                              // Di bulan tengah: tampilkan "01 - 31 (atau akhir bulan)"
+                              const lastDay = new Date(
+                                selectedYear,
+                                selectedMonth,
+                                0
+                              ).getDate();
+                              return `01/${String(selectedMonth).padStart(
+                                2,
+                                "0"
+                              )}/${selectedYear} - ${String(lastDay).padStart(
+                                2,
+                                "0"
+                              )}/${String(selectedMonth).padStart(
+                                2,
+                                "0"
+                              )}/${selectedYear}`;
+                            })()}
+                          </td>
+                          <td className="border px-4 py-2 text-sm">
+                            {tm.deskripsi}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
 
           {Object.keys(editedRecords).length > 0 && (
             <div className="mt-6 flex justify-center gap-4">
@@ -6001,17 +6572,65 @@ const DaftarHadirTab: React.FC<{
 const TanggalMerahTab: React.FC<{
   onRefresh: () => void;
 }> = ({ onRefresh }) => {
+  // TAMBAHKAN DATA LIBUR NASIONAL DI SINI
+  const liburNasionalOptions = [
+    "Tahun Baru Masehi",
+    "Tahun Baru Imlek",
+    "Hari Raya Nyepi",
+    "Wafat Isa Al-Masih",
+    "Hari Buruh Internasional",
+    "Kenaikan Isa Al-Masih",
+    "Hari Raya Waisak",
+    "Hari Lahir Pancasila",
+    "Hari Raya Idul Fitri",
+    "Hari Raya Idul Adha",
+    "Tahun Baru Islam",
+    "Maulid Nabi Muhammad SAW",
+    "Hari Kemerdekaan RI",
+    "Isra Mikraj Nabi Muhammad SAW",
+    "Hari Raya Natal",
+    "Cuti Bersama Lebaran",
+    "Cuti Bersama Tahun Baru",
+    "Cuti Bersama Natal",
+    "Libur Akhir Semester Ganjil",
+    "Libur Akhir Semester Genap",
+  ];
   const [tanggalMerahList, setTanggalMerahList] = useState<TanggalMerah[]>([]);
   const [tanggal, setTanggal] = useState("");
+  const [tanggalAkhir, setTanggalAkhir] = useState("");
   const [deskripsi, setDeskripsi] = useState("");
   const [loading, setLoading] = useState<boolean>(true);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [isDeleting, setIsDeleting] = useState<boolean>(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [showDropdown, setShowDropdown] = useState<boolean>(false);
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // TAMBAHKAN: Helper untuk cek apakah perlu rentang tanggal
+  const needsDateRange = React.useMemo(() => {
+    return deskripsi.toLowerCase().includes("libur akhir semester");
+  }, [deskripsi]);
 
   // Fetch data tanggal merah
   useEffect(() => {
     fetchTanggalMerah();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(event.target as Node)
+      ) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
 
   const fetchTanggalMerah = () => {
@@ -6037,9 +6656,28 @@ const TanggalMerahTab: React.FC<{
       });
   };
 
+  const filteredOptions = React.useMemo(() => {
+    if (!searchQuery.trim()) return liburNasionalOptions;
+    return liburNasionalOptions.filter((option) =>
+      option.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [searchQuery, liburNasionalOptions]);
+
+  const handleSelectOption = (option: string) => {
+    setDeskripsi(option);
+    setSearchQuery("");
+    setShowDropdown(false);
+  };
+
   const handleSubmit = () => {
     if (!tanggal || !deskripsi) {
       alert("⚠️ Tanggal dan Deskripsi wajib diisi!");
+      return;
+    }
+
+    // TAMBAHKAN: Validasi untuk libur semester
+    if (needsDateRange && !tanggalAkhir) {
+      alert("⚠️ Tanggal akhir wajib diisi untuk Libur Semester!");
       return;
     }
 
@@ -6052,12 +6690,14 @@ const TanggalMerahTab: React.FC<{
       body: JSON.stringify({
         type: "tanggalMerah",
         tanggal: formatDateDDMMYYYY(tanggal),
+        tanggalAkhir: tanggalAkhir ? formatDateDDMMYYYY(tanggalAkhir) : "", // TAMBAHKAN
         deskripsi,
       }),
     })
       .then(() => {
         alert("✅ Tanggal merah berhasil ditambahkan!");
         setTanggal("");
+        setTanggalAkhir(""); // TAMBAHKAN
         setDeskripsi("");
         fetchTanggalMerah();
         onRefresh();
@@ -6071,9 +6711,17 @@ const TanggalMerahTab: React.FC<{
 
   const handleEdit = (index: number) => {
     const item = tanggalMerahList[index];
-    // Convert DD/MM/YYYY to YYYY-MM-DD for date input
     const [day, month, year] = item.tanggal.split("/");
     setTanggal(`${year}-${month}-${day}`);
+
+    // TAMBAHKAN: Set tanggal akhir jika ada
+    if (item.tanggalAkhir) {
+      const [dayEnd, monthEnd, yearEnd] = item.tanggalAkhir.split("/");
+      setTanggalAkhir(`${yearEnd}-${monthEnd}-${dayEnd}`);
+    } else {
+      setTanggalAkhir("");
+    }
+
     setDeskripsi(item.deskripsi);
     setEditingIndex(index);
   };
@@ -6081,6 +6729,12 @@ const TanggalMerahTab: React.FC<{
   const handleUpdate = () => {
     if (!tanggal || !deskripsi || editingIndex === null) {
       alert("⚠️ Tanggal dan Deskripsi wajib diisi!");
+      return;
+    }
+
+    // TAMBAHKAN: Validasi untuk libur semester
+    if (needsDateRange && !tanggalAkhir) {
+      alert("⚠️ Tanggal akhir wajib diisi untuk Libur Semester!");
       return;
     }
 
@@ -6095,12 +6749,14 @@ const TanggalMerahTab: React.FC<{
         type: "editTanggalMerah",
         tanggalLama: oldItem.tanggal,
         tanggalBaru: formatDateDDMMYYYY(tanggal),
+        tanggalAkhir: tanggalAkhir ? formatDateDDMMYYYY(tanggalAkhir) : "", // TAMBAHKAN
         deskripsi,
       }),
     })
       .then(() => {
         alert("✅ Tanggal merah berhasil diperbarui!");
         setTanggal("");
+        setTanggalAkhir(""); // TAMBAHKAN
         setDeskripsi("");
         setEditingIndex(null);
         fetchTanggalMerah();
@@ -6143,6 +6799,7 @@ const TanggalMerahTab: React.FC<{
 
   const handleCancel = () => {
     setTanggal("");
+    setTanggalAkhir(""); // TAMBAHKAN
     setDeskripsi("");
     setEditingIndex(null);
   };
@@ -6170,16 +6827,66 @@ const TanggalMerahTab: React.FC<{
             onChange={(e) => setTanggal(e.target.value)}
             className="w-full border border-gray-300 px-4 py-2 rounded-lg"
             disabled={isSaving}
+            placeholder="Tanggal Mulai"
           />
-          <input
-            type="text"
-            placeholder="Deskripsi (cth: Hari Raya Nyepi)"
-            value={deskripsi}
-            onChange={(e) => setDeskripsi(e.target.value)}
-            className="w-full border border-gray-300 px-4 py-2 rounded-lg"
-            disabled={isSaving}
-          />
+          {/* TAMBAHKAN: Input tanggal akhir yang muncul conditional */}
+          {needsDateRange && (
+            <input
+              type="date"
+              value={tanggalAkhir}
+              onChange={(e) => setTanggalAkhir(e.target.value)}
+              className="w-full border border-gray-300 px-4 py-2 rounded-lg"
+              disabled={isSaving}
+              placeholder="Tanggal Akhir (untuk Libur Semester)"
+            />
+          )}
+          {/* ⬇️ GANTI DENGAN KODE INI ⬇️ */}
+          <div className="relative" ref={dropdownRef}>
+            <input
+              type="text"
+              placeholder="Deskripsi (cth: Hari Raya Nyepi)"
+              value={deskripsi}
+              onChange={(e) => {
+                setDeskripsi(e.target.value);
+                setSearchQuery(e.target.value);
+                setShowDropdown(true);
+              }}
+              onFocus={() => setShowDropdown(true)}
+              className="w-full border border-gray-300 px-4 py-2 rounded-lg"
+              disabled={isSaving}
+            />
+
+            {showDropdown && filteredOptions.length > 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                {filteredOptions.map((option, index) => (
+                  <div
+                    key={index}
+                    onClick={() => handleSelectOption(option)}
+                    className="px-4 py-2 hover:bg-blue-50 cursor-pointer text-sm transition-colors"
+                  >
+                    {option}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {showDropdown && searchQuery && filteredOptions.length === 0 && (
+              <div className="absolute z-50 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg p-4 text-center text-gray-500 text-sm">
+                Tidak ada hasil untuk "{searchQuery}"
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* TAMBAHKAN: Info helper untuk libur semester */}
+        {needsDateRange && (
+          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-700">
+              💡 <strong>Libur Semester:</strong> Silakan pilih tanggal mulai
+              dan tanggal akhir libur.
+            </p>
+          </div>
+        )}
         <div className="flex justify-center gap-4">
           {editingIndex !== null ? (
             <>
@@ -6234,7 +6941,11 @@ const TanggalMerahTab: React.FC<{
                 className="flex justify-between items-center bg-gray-50 border border-gray-200 px-4 py-3 rounded-lg"
               >
                 <div>
-                  <p className="font-medium text-gray-800">{item.tanggal}</p>
+                  <p className="font-medium text-gray-800">
+                    {item.tanggalAkhir
+                      ? `${item.tanggal} - ${item.tanggalAkhir}`
+                      : item.tanggal}
+                  </p>
                   <p className="text-sm text-gray-600">{item.deskripsi}</p>
                 </div>
                 <div className="flex gap-2">
