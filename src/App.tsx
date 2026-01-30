@@ -4814,6 +4814,50 @@ const DaftarHadirTab: React.FC<{
   const [jadwalMengajar, setJadwalMengajar] = useState<JadwalMengajar[]>([]);
   const [loadingJadwal, setLoadingJadwal] = useState<boolean>(false);
 
+  const [customColors, setCustomColors] = useState({
+    hariMinggu: "#DC3545", // Merah default
+    liburSemester: "#22C55E", // Hijau default
+    tanggalMerah: "#D3D3D3", // Abu-abu default
+    bukanJadwal: "#93C5FD", // Biru muda default
+    jadwalMengajar: "#FFFFFF", // Putih default
+    dataEdit: "#FEF3C7", // Kuning default
+  });
+
+  const [showColorPicker, setShowColorPicker] = useState(false);
+
+  useEffect(() => {
+    const savedColors = localStorage.getItem("daftarHadirColors");
+    if (savedColors) {
+      try {
+        setCustomColors(JSON.parse(savedColors));
+      } catch (error) {
+        console.error("Error loading colors:", error);
+      }
+    }
+  }, []);
+
+  // Simpan warna ke localStorage setiap kali berubah
+  const handleColorChange = (colorKey: string, newColor: string) => {
+    const updatedColors = { ...customColors, [colorKey]: newColor };
+    setCustomColors(updatedColors);
+    localStorage.setItem("daftarHadirColors", JSON.stringify(updatedColors));
+  };
+
+  // Reset ke warna default
+  const resetColors = () => {
+    const defaultColors = {
+      hariMinggu: "#DC3545",
+      liburSemester: "#22C55E",
+      tanggalMerah: "#D3D3D3",
+      bukanJadwal: "#93C5FD",
+      jadwalMengajar: "#FFFFFF",
+      dataEdit: "#FEF3C7",
+    };
+    setCustomColors(defaultColors);
+    localStorage.setItem("daftarHadirColors", JSON.stringify(defaultColors));
+    alert("✅ Warna berhasil direset ke default!");
+  };
+
   // Fungsi untuk mengecek apakah tanggal adalah hari Minggu
   const isSunday = (day: number): boolean => {
     const date = new Date(selectedYear, selectedMonth - 1, day);
@@ -6021,22 +6065,35 @@ const DaftarHadirTab: React.FC<{
           const isLiburSem = isLiburSemesterPDF(dayNum);
           const isBukanJadwal = isBukanJadwalMengajar(dayNum);
 
-          // ✅ PRIORITAS: Minggu > Libur Semester > Tanggal Merah
+          // TAMBAHKAN helper function di awal downloadPDF
+          const hexToRgb = (hex: string): [number, number, number] => {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(
+              hex
+            );
+            return result
+              ? [
+                  parseInt(result[1], 16),
+                  parseInt(result[2], 16),
+                  parseInt(result[3], 16),
+                ]
+              : [255, 255, 255];
+          };
+
+          // Kemudian gunakan di didParseCell:
           if (isSundayDay) {
-            data.cell.styles.fillColor = [220, 53, 69]; // ✅ Merah RGB
+            data.cell.styles.fillColor = hexToRgb(customColors.hariMinggu);
             data.cell.styles.textColor = [255, 255, 255];
             data.cell.styles.fontStyle = "bold";
           } else if (isLiburSem) {
-            data.cell.styles.fillColor = [34, 197, 94];
+            data.cell.styles.fillColor = hexToRgb(customColors.liburSemester);
             data.cell.styles.textColor = [255, 255, 255];
             data.cell.styles.fontStyle = "bold";
           } else if (isTglMerah) {
-            data.cell.styles.fillColor = [211, 211, 211]; // ✅ Abu-abu RGB
+            data.cell.styles.fillColor = hexToRgb(customColors.tanggalMerah);
             data.cell.styles.textColor = [0, 0, 0];
             data.cell.styles.fontStyle = "bold";
           } else if (isBukanJadwal) {
-            // TAMBAHKAN
-            data.cell.styles.fillColor = [147, 197, 253]; // blue-300
+            data.cell.styles.fillColor = hexToRgb(customColors.bukanJadwal);
             data.cell.styles.textColor = [0, 0, 0];
             data.cell.styles.fontStyle = "bold";
           }
@@ -6059,16 +6116,37 @@ const DaftarHadirTab: React.FC<{
           const isLiburSem = isLiburSemesterPDF(dayNum);
           const isBukanJadwal = isBukanJadwalMengajar(dayNum);
 
+          // TAMBAHKAN helper function di awal downloadPDF
+          const hexToRgb = (hex: string): [number, number, number] => {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(
+              hex
+            );
+            return result
+              ? [
+                  parseInt(result[1], 16),
+                  parseInt(result[2], 16),
+                  parseInt(result[3], 16),
+                ]
+              : [255, 255, 255];
+          };
+
+          // Kemudian gunakan di didParseCell:
           if (isSundayDay) {
-            data.cell.styles.fillColor = [220, 53, 69];
-            data.cell.styles.textColor = [0, 0, 0];
+            data.cell.styles.fillColor = hexToRgb(customColors.hariMinggu);
+            data.cell.styles.textColor = [255, 255, 255];
+            data.cell.styles.fontStyle = "bold";
           } else if (isLiburSem) {
-            data.cell.styles.fillColor = [34, 197, 94]; // green-500
+            data.cell.styles.fillColor = hexToRgb(customColors.liburSemester);
+            data.cell.styles.textColor = [255, 255, 255];
+            data.cell.styles.fontStyle = "bold";
           } else if (isTglMerah) {
-            data.cell.styles.fillColor = [211, 211, 211];
+            data.cell.styles.fillColor = hexToRgb(customColors.tanggalMerah);
+            data.cell.styles.textColor = [0, 0, 0];
+            data.cell.styles.fontStyle = "bold";
           } else if (isBukanJadwal) {
-            // TAMBAHKAN
-            data.cell.styles.fillColor = [147, 197, 253]; // blue-300
+            data.cell.styles.fillColor = hexToRgb(customColors.bukanJadwal);
+            data.cell.styles.textColor = [0, 0, 0];
+            data.cell.styles.fontStyle = "bold";
           }
         }
 
@@ -6089,21 +6167,37 @@ const DaftarHadirTab: React.FC<{
           const isLiburSem = isLiburSemesterPDF(dayNum);
           const isBukanJadwal = isBukanJadwalMengajar(dayNum);
 
-          // ✅ PRIORITAS: Minggu > Libur Semester > Tanggal Merah
-          if (isSundayDay) {
-            data.cell.styles.fillColor = [220, 53, 69];
-            data.cell.styles.textColor = [0, 0, 0];
-          } else if (isLiburSem) {
-            data.cell.styles.fillColor = [34, 197, 94]; // green-500
-          } else if (isTglMerah) {
-            data.cell.styles.fillColor = [211, 211, 211];
-          } else if (isBukanJadwal) {
-            // TAMBAHKAN
-            data.cell.styles.fillColor = [147, 197, 253]; // blue-300
-          }
+          // TAMBAHKAN helper function di awal downloadPDF
+          const hexToRgb = (hex: string): [number, number, number] => {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(
+              hex
+            );
+            return result
+              ? [
+                  parseInt(result[1], 16),
+                  parseInt(result[2], 16),
+                  parseInt(result[3], 16),
+                ]
+              : [255, 255, 255];
+          };
 
-          if (data.row.index === body.length + 1) {
-            data.cell.styles.fontSize = 6;
+          // Kemudian gunakan di didParseCell:
+          if (isSundayDay) {
+            data.cell.styles.fillColor = hexToRgb(customColors.hariMinggu);
+            data.cell.styles.textColor = [255, 255, 255];
+            data.cell.styles.fontStyle = "bold";
+          } else if (isLiburSem) {
+            data.cell.styles.fillColor = hexToRgb(customColors.liburSemester);
+            data.cell.styles.textColor = [255, 255, 255];
+            data.cell.styles.fontStyle = "bold";
+          } else if (isTglMerah) {
+            data.cell.styles.fillColor = hexToRgb(customColors.tanggalMerah);
+            data.cell.styles.textColor = [0, 0, 0];
+            data.cell.styles.fontStyle = "bold";
+          } else if (isBukanJadwal) {
+            data.cell.styles.fillColor = hexToRgb(customColors.bukanJadwal);
+            data.cell.styles.textColor = [0, 0, 0];
+            data.cell.styles.fontStyle = "bold";
           }
         }
       },
@@ -6527,42 +6621,214 @@ const DaftarHadirTab: React.FC<{
           </div>
         </div>
 
-        {/* Legenda Warna - UPDATE BAGIAN INI */}
+        {/* ========== SECTION BARU: PENGATURAN WARNA ========== */}
+        <div className="border-t border-gray-200 pt-4 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-medium text-gray-700">
+              🎨 Pengaturan Warna Tabel
+            </p>
+            <button
+              onClick={() => setShowColorPicker(!showColorPicker)}
+              className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            >
+              {showColorPicker ? "▲ Sembunyikan" : "▼ Tampilkan"}
+            </button>
+          </div>
+
+          {showColorPicker && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-4">
+                {/* Hari Minggu */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-medium text-gray-700">
+                    Hari Minggu (Disabled)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customColors.hariMinggu}
+                      onChange={(e) =>
+                        handleColorChange("hariMinggu", e.target.value)
+                      }
+                      className="w-12 h-10 border border-gray-300 rounded cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-600">
+                      {customColors.hariMinggu}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Libur Semester */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-medium text-gray-700">
+                    Libur Semester (Disabled)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customColors.liburSemester}
+                      onChange={(e) =>
+                        handleColorChange("liburSemester", e.target.value)
+                      }
+                      className="w-12 h-10 border border-gray-300 rounded cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-600">
+                      {customColors.liburSemester}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Tanggal Merah */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-medium text-gray-700">
+                    Tanggal Merah (Libur)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customColors.tanggalMerah}
+                      onChange={(e) =>
+                        handleColorChange("tanggalMerah", e.target.value)
+                      }
+                      className="w-12 h-10 border border-gray-300 rounded cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-600">
+                      {customColors.tanggalMerah}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Bukan Jadwal */}
+                {schoolData?.statusGuru !== "Guru Kelas" &&
+                  selectedKelas !== "Semua" && (
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs font-medium text-gray-700">
+                        Bukan Jadwal Mengajar
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={customColors.bukanJadwal}
+                          onChange={(e) =>
+                            handleColorChange("bukanJadwal", e.target.value)
+                          }
+                          className="w-12 h-10 border border-gray-300 rounded cursor-pointer"
+                        />
+                        <span className="text-xs text-gray-600">
+                          {customColors.bukanJadwal}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                {/* Jadwal Mengajar */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-medium text-gray-700">
+                    {schoolData?.statusGuru === "Guru Kelas" ||
+                    selectedKelas === "Semua"
+                      ? "Hari Normal"
+                      : "Jadwal Mengajar"}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customColors.jadwalMengajar}
+                      onChange={(e) =>
+                        handleColorChange("jadwalMengajar", e.target.value)
+                      }
+                      className="w-12 h-10 border border-gray-300 rounded cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-600">
+                      {customColors.jadwalMengajar}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Data Edit */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs font-medium text-gray-700">
+                    Data Sedang Diedit
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={customColors.dataEdit}
+                      onChange={(e) =>
+                        handleColorChange("dataEdit", e.target.value)
+                      }
+                      className="w-12 h-10 border border-gray-300 rounded cursor-pointer"
+                    />
+                    <span className="text-xs text-gray-600">
+                      {customColors.dataEdit}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Button Reset */}
+              <div className="flex justify-end">
+                <button
+                  onClick={resetColors}
+                  className="text-xs px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  🔄 Reset ke Warna Default
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        {/* ========== AKHIR SECTION PENGATURAN WARNA ========== */}
+
+        {/* Legenda Warna - UPDATE DENGAN WARNA DINAMIS */}
         <div className="mb-4 bg-gray-50 border border-gray-300 rounded-lg p-4">
           <h4 className="text-sm font-semibold text-gray-700 mb-3">
             📌 Keterangan Warna:
           </h4>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-red-500 border border-gray-300 rounded"></div>
+              <div
+                className="w-6 h-6 border border-gray-300 rounded"
+                style={{ backgroundColor: customColors.hariMinggu }}
+              ></div>
               <span className="text-xs text-gray-700">
                 Hari Minggu (Disabled)
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-green-500 border border-gray-300 rounded"></div>
+              <div
+                className="w-6 h-6 border border-gray-300 rounded"
+                style={{ backgroundColor: customColors.liburSemester }}
+              ></div>
               <span className="text-xs text-gray-700">
                 Libur Semester (Disabled)
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-gray-300 border border-gray-300 rounded"></div>
+              <div
+                className="w-6 h-6 border border-gray-300 rounded"
+                style={{ backgroundColor: customColors.tanggalMerah }}
+              ></div>
               <span className="text-xs text-gray-700">
                 Tanggal Merah (Libur)
               </span>
             </div>
-            {/* TAMBAHKAN KETERANGAN BARU */}
             {schoolData?.statusGuru !== "Guru Kelas" &&
               selectedKelas !== "Semua" && (
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 bg-blue-300 border border-gray-300 rounded"></div>
+                  <div
+                    className="w-6 h-6 border border-gray-300 rounded"
+                    style={{ backgroundColor: customColors.bukanJadwal }}
+                  ></div>
                   <span className="text-xs text-gray-700">
                     Bukan Jadwal Mengajar
                   </span>
                 </div>
               )}
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-white border border-gray-300 rounded"></div>
+              <div
+                className="w-6 h-6 border border-gray-300 rounded"
+                style={{ backgroundColor: customColors.jadwalMengajar }}
+              ></div>
               <span className="text-xs text-gray-700">
                 {schoolData?.statusGuru === "Guru Kelas" ||
                 selectedKelas === "Semua"
@@ -6571,7 +6837,10 @@ const DaftarHadirTab: React.FC<{
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-6 h-6 bg-yellow-100 border border-gray-300 rounded"></div>
+              <div
+                className="w-6 h-6 border border-gray-300 rounded"
+                style={{ backgroundColor: customColors.dataEdit }}
+              ></div>
               <span className="text-xs text-gray-700">Data Sedang Diedit</span>
             </div>
           </div>
@@ -6710,17 +6979,26 @@ const DaftarHadirTab: React.FC<{
                       key={i}
                       className={`border px-1 py-1 text-sm ${
                         isSundayDay
-                          ? "bg-red-500 text-black font-bold"
+                          ? "text-black font-bold"
                           : isLiburSem
-                          ? "bg-green-500 text-black font-bold"
+                          ? "text-black font-bold"
                           : isTglMerah
-                          ? "bg-gray-300 text-black font-bold"
-                          : isBukanJadwal // TAMBAHKAN
-                          ? "bg-blue-300 text-black font-bold"
-                          : !hasData
-                          ? "bg-gray"
+                          ? "text-black font-bold"
+                          : isBukanJadwal
+                          ? "text-black font-bold"
                           : ""
                       }`}
+                      style={{
+                        backgroundColor: isSundayDay
+                          ? customColors.hariMinggu
+                          : isLiburSem
+                          ? customColors.liburSemester
+                          : isTglMerah
+                          ? customColors.tanggalMerah
+                          : isBukanJadwal
+                          ? customColors.bukanJadwal
+                          : customColors.jadwalMengajar,
+                      }}
                       title={
                         isSundayDay
                           ? "Hari Minggu"
@@ -6757,15 +7035,26 @@ const DaftarHadirTab: React.FC<{
                       key={i}
                       className={`border px-1 py-1 text-sm ${
                         isSundayDay
-                          ? "bg-red-500"
+                          ? "text-black font-bold"
                           : isLiburSem
-                          ? "bg-green-500"
+                          ? "text-black font-bold"
                           : isTglMerah
-                          ? "bg-gray-300"
-                          : isBukanJadwal // TAMBAHKAN
-                          ? "bg-blue-300"
+                          ? "text-black font-bold"
+                          : isBukanJadwal
+                          ? "text-black font-bold"
                           : ""
                       }`}
+                      style={{
+                        backgroundColor: isSundayDay
+                          ? customColors.hariMinggu
+                          : isLiburSem
+                          ? customColors.liburSemester
+                          : isTglMerah
+                          ? customColors.tanggalMerah
+                          : isBukanJadwal
+                          ? customColors.bukanJadwal
+                          : customColors.jadwalMengajar,
+                      }}
                     ></th>
                   );
                 })}
@@ -6815,6 +7104,7 @@ const DaftarHadirTab: React.FC<{
                       const hasDataOnThisDate = !daysWithNoData.has(dayNum);
                       const isTglMerah = isTanggalMerah(dayNum);
                       const isSundayDay = isSunday(dayNum);
+                      const isLiburSem = isLiburSemester(dayNum);
                       const isBukanJadwal = isBukanJadwalMengajar(dayNum); // TAMBAHKAN
 
                       const getFullStatus = (
@@ -6852,21 +7142,28 @@ const DaftarHadirTab: React.FC<{
                       return (
                         <td
                           key={day}
-                          className={`border px-1 py-1 text-center text-xs ${
+                          className={`border px-1 py-1 text-sm ${
                             isSundayDay
-                              ? "bg-red-500"
-                              : isEdited
-                              ? "bg-yellow-100"
-                              : isLiburSemester(day + 1)
-                              ? "bg-green-500"
+                              ? "text-black font-bold"
+                              : isLiburSem
+                              ? "text-black font-bold"
                               : isTglMerah
-                              ? "bg-gray-300"
-                              : isBukanJadwal // TAMBAHKAN
-                              ? "bg-blue-300"
-                              : !hasDataOnThisDate
-                              ? "bg-white"
+                              ? "text-black font-bold"
+                              : isBukanJadwal
+                              ? "text-black font-bold"
                               : ""
                           }`}
+                          style={{
+                            backgroundColor: isSundayDay
+                              ? customColors.hariMinggu
+                              : isLiburSem
+                              ? customColors.liburSemester
+                              : isTglMerah
+                              ? customColors.tanggalMerah
+                              : isBukanJadwal
+                              ? customColors.bukanJadwal
+                              : customColors.jadwalMengajar,
+                          }}
                         >
                           <select
                             value={
@@ -6908,16 +7205,16 @@ const DaftarHadirTab: React.FC<{
                           >
                             <option value="">-</option>
                             <option value="Hadir" style={{ color: "#059669" }}>
-                              H - Hadir
+                              H
                             </option>
                             <option value="Izin" style={{ color: "#D97706" }}>
-                              I - Izin
+                              I
                             </option>
                             <option value="Sakit" style={{ color: "#2563EB" }}>
-                              S - Sakit
+                              S
                             </option>
                             <option value="Alpha" style={{ color: "#DC2626" }}>
-                              A - Alpha
+                              A
                             </option>
                           </select>
                         </td>
@@ -6962,17 +7259,28 @@ const DaftarHadirTab: React.FC<{
                   return (
                     <td
                       key={day}
-                      className={`border px-1 py-1 text-center text-xs ${
+                      className={`border px-1 py-1 text-sm ${
                         isSundayDay
-                          ? "bg-red-500" // ✅ Ganti
+                          ? "text-black font-bold"
                           : isLiburSem
-                          ? "bg-green-500"
+                          ? "text-black font-bold"
                           : isTglMerah
-                          ? "bg-gray-300" // ✅ Ganti
-                          : isBukanJadwal // ✅ TAMBAHKAN
-                          ? "bg-blue-300"
+                          ? "text-black font-bold"
+                          : isBukanJadwal
+                          ? "text-black font-bold"
                           : ""
                       }`}
+                      style={{
+                        backgroundColor: isSundayDay
+                          ? customColors.hariMinggu
+                          : isLiburSem
+                          ? customColors.liburSemester
+                          : isTglMerah
+                          ? customColors.tanggalMerah
+                          : isBukanJadwal
+                          ? customColors.bukanJadwal
+                          : customColors.jadwalMengajar,
+                      }}
                     >
                       {stats.total > 0 ? stats.hadir : ""}
                     </td>
@@ -7012,17 +7320,28 @@ const DaftarHadirTab: React.FC<{
                   return (
                     <td
                       key={day}
-                      className={`border px-1 py-1 text-center text-xs ${
+                      className={`border px-1 py-1 text-sm ${
                         isSundayDay
-                          ? "bg-red-500" // ✅ Ganti
+                          ? "text-black font-bold"
                           : isLiburSem
-                          ? "bg-green-500"
+                          ? "text-black font-bold"
                           : isTglMerah
-                          ? "bg-gray-300" // ✅ Ganti
-                          : isBukanJadwal // ✅ TAMBAHKAN
-                          ? "bg-blue-300"
+                          ? "text-black font-bold"
+                          : isBukanJadwal
+                          ? "text-black font-bold"
                           : ""
                       }`}
+                      style={{
+                        backgroundColor: isSundayDay
+                          ? customColors.hariMinggu
+                          : isLiburSem
+                          ? customColors.liburSemester
+                          : isTglMerah
+                          ? customColors.tanggalMerah
+                          : isBukanJadwal
+                          ? customColors.bukanJadwal
+                          : customColors.jadwalMengajar,
+                      }}
                     >
                       {percentage}
                     </td>
