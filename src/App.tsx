@@ -29,7 +29,7 @@ ChartJS.register(
 );
 
 const endpoint =
-  "https://script.google.com/macros/s/AKfycby9BMXpUMxzqwP89KWIGfQ4_XHsNKhVLrhzAV6XyO1k0_0CBSUV6Chac9rD_piPiK8-zA/exec";
+  "https://script.google.com/macros/s/AKfycbwZ6OISCbeyxnQf89xlYT7FiggcKKx6sRHifl0mvYYDpjhZDWH9Nxlgc-BhoUsEjsH-tQ/exec";
 const SHEET_SEMESTER1 = "RekapSemester1";
 const SHEET_SEMESTER2 = "RekapSemester2";
 
@@ -116,6 +116,11 @@ interface TanggalMerah {
   tanggal: string;
   deskripsi: string;
   tanggalAkhir?: string;
+}
+
+interface JadwalMengajar {
+  kelas: string;
+  hari: string;
 }
 
 const formatDateDDMMYYYY = (isoDate: string): string => {
@@ -1074,6 +1079,12 @@ const AttendanceTab: React.FC<{
   const [selectedKelas, setSelectedKelas] = useState<string>("Semua");
   const [showDebugInfo, setShowDebugInfo] = useState<boolean>(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [tanggalMerahList, setTanggalMerahList] = useState<TanggalMerah[]>([]);
+  const [loadingTanggalMerah, setLoadingTanggalMerah] =
+    useState<boolean>(false);
+  const [jadwalMengajar, setJadwalMengajar] = useState<JadwalMengajar[]>([]);
+  const [loadingJadwal, setLoadingJadwal] = useState<boolean>(false);
+  const [schoolData, setSchoolData] = useState<SchoolData | null>(null);
 
   // NEW: State untuk menyimpan ID siswa yang sudah memiliki data existing (granular per siswa)
   const [existingStudentIds, setExistingStudentIds] = useState<Set<string>>(
@@ -1260,6 +1271,65 @@ const AttendanceTab: React.FC<{
     }
   }, [date, students, attendance]);
 
+  useEffect(() => {
+    fetch(`${endpoint}?action=schoolData`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (data.success && data.data && data.data.length > 0) {
+          setSchoolData(data.data[0]);
+        } else {
+          setSchoolData(null);
+        }
+      })
+      .catch((error) => {
+        console.error("Error fetching school data:", error);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchTanggalMerah();
+    fetchJadwalMengajar();
+  }, []);
+
+  const fetchTanggalMerah = async () => {
+    setLoadingTanggalMerah(true);
+    try {
+      const res = await fetch(`${endpoint}?action=tanggalMerah`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (data.success) {
+        setTanggalMerahList(data.data || []);
+      }
+    } catch (error) {
+      console.error("Error fetch tanggal merah:", error);
+    } finally {
+      setLoadingTanggalMerah(false);
+    }
+  };
+
+  const fetchJadwalMengajar = async () => {
+    setLoadingJadwal(true);
+    try {
+      const res = await fetch(`${endpoint}?action=jadwalMengajar`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (data.success) {
+        console.log("Jadwal mengajar loaded:", data.data);
+        setJadwalMengajar(data.data || []);
+      } else {
+        console.error("Gagal memuat jadwal mengajar:", data.message);
+        setJadwalMengajar([]);
+      }
+    } catch (error) {
+      console.error("Error fetch jadwal mengajar:", error);
+    } finally {
+      setLoadingJadwal(false);
+    }
+  };
+
   const setStatus = (sid: string, status: AttendanceStatus) => {
     // NEW: Jika siswa ini sudah memiliki data existing, jangan izinkan perubahan
     if (existingStudentIds.has(sid)) {
@@ -1334,7 +1404,145 @@ const AttendanceTab: React.FC<{
     return summary;
   };
 
+  // TAMBAHKAN fungsi-fungsi helper ini sebelum return statement:
+  const isSunday = (dateStr: string): boolean => {
+    const [year, month, day] = dateStr.split("-");
+    const date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+    return date.getDay() === 0;
+  };
+
+  const isInDateRange = (
+    currentDate: string,
+    startDate: string,
+    endDate?: string
+  ): boolean => {
+    const formatToComparable = (dateStr: string) => {
+      const [d, m, y] = dateStr.split("/");
+      return new Date(parseInt(y), parseInt(m) - 1, parseInt(d));
+    };
+
+    const [year, month, day] = currentDate.split("-");
+    const current = new Date(
+      parseInt(year),
+      parseInt(month) - 1,
+      parseInt(day)
+    );
+    const start = formatToComparable(startDate);
+
+    if (!endDate) {
+      return current.getTime() === start.getTime();
+    }
+
+    const end = formatToComparable(endDate);
+    return current >= start && current <= end;
+  };
+
+  const getTanggalMerahInfo = (dateStr: string): TanggalMerah | null => {
+    const formattedDate = formatDateDDMMYYYY(dateStr);
+
+    for (const tm of tanggalMerahList) {
+      if (isInDateRange(dateStr, tm.tanggal, tm.tanggalAkhir)) {
+        return tm;
+      }
+    }
+    return null;
+  };
+
+  const isLiburSemester = (dateStr: string): boolean => {
+    const info = getTanggalMerahInfo(dateStr);
+    if (!info) return false;
+
+    const desc = info.deskripsi.toLowerCase();
+    return (
+      desc.includes("libur akhir semester") || desc.includes("libur semester")
+    );
+  };
+
+  const isTanggalMerah = (dateStr: string): boolean => {
+    const info = getTanggalMerahInfo(dateStr);
+    if (!info) return false;
+
+    const desc = info.deskripsi.toLowerCase();
+    return !(
+      desc.includes("libur akhir semester") || desc.includes("libur semester")
+    );
+  };
+
+  const isBukanJadwalMengajar = (dateStr: string): boolean => {
+    // Jika guru kelas, semua hari adalah jadwal mengajar
+    if (schoolData?.statusGuru === "Guru Kelas") {
+      return false;
+    }
+
+    // Jika "Semua" dipilih, tidak bisa tentukan jadwal spesifik
+    if (selectedKelas === "Semua") {
+      return false;
+    }
+
+    // Cari jadwal untuk kelas yang dipilih
+    const jadwal = jadwalMengajar.find((j) => j.kelas === selectedKelas);
+
+    if (!jadwal) {
+      // Jika tidak ada jadwal untuk kelas ini, anggap semua hari bukan jadwal
+      return true;
+    }
+
+    // Dapatkan nama hari dari tanggal
+    const [year, month, day] = dateStr.split("-");
+    const currentDate = new Date(
+      parseInt(year),
+      parseInt(month) - 1,
+      parseInt(day)
+    );
+    const dayNames = [
+      "Minggu",
+      "Senin",
+      "Selasa",
+      "Rabu",
+      "Kamis",
+      "Jumat",
+      "Sabtu",
+    ];
+    const dayName = dayNames[currentDate.getDay()];
+
+    // Split hari dari jadwal dan trim setiap item
+    const hariJadwal = jadwal.hari
+      .split(",")
+      .map((h) => h.trim())
+      .filter((h) => h.length > 0);
+
+    // Return true jika BUKAN hari jadwal
+    return !hariJadwal.includes(dayName);
+  };
+
   const attendanceSummary = getAttendanceSummary();
+
+  if (students.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto" style={{ paddingBottom: "70px" }}>
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-2xl font-bold text-center text-blue-700 mb-6">
+            📋 Absensi Siswa
+          </h2>
+          <div className="text-center py-12">
+            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-8 max-w-md mx-auto">
+              <div className="text-6xl mb-4">⚠️</div>
+              <h3 className="text-2xl font-bold text-yellow-700 mb-2">
+                Data Siswa Kosong
+              </h3>
+              <p className="text-yellow-600 mb-4">
+                Anda belum mengisi Data Siswa.
+              </p>
+              <p className="text-sm text-yellow-500">
+                Silakan tambahkan data siswa terlebih dahulu di menu "Data
+                Siswa".
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // NEW: Cek apakah semua siswa sudah memiliki data existing
   const allStudentsHaveData =
@@ -1534,6 +1742,71 @@ const AttendanceTab: React.FC<{
             <p className="text-sm text-gray-400 mt-2">
               Pilih kelas lain atau ubah filter ke "Semua"
             </p>
+          </div>
+        ) : isSunday(date) ? (
+          // TAMPILAN UNTUK HARI MINGGU
+          <div className="text-center py-12">
+            <div className="bg-red-50 border-2 border-red-200 rounded-lg p-8 max-w-md mx-auto">
+              <div className="text-6xl mb-4">🌅</div>
+              <h3 className="text-2xl font-bold text-red-700 mb-2">
+                Hari Minggu
+              </h3>
+              <p className="text-red-600">
+                Tanggal {formatDateDDMMYYYY(date)} adalah hari Minggu.
+              </p>
+              <p className="text-sm text-red-500 mt-2">
+                Tidak ada kegiatan belajar mengajar.
+              </p>
+            </div>
+          </div>
+        ) : isLiburSemester(date) ? (
+          // TAMPILAN UNTUK LIBUR SEMESTER
+          <div className="text-center py-12">
+            <div className="bg-green-50 border-2 border-green-200 rounded-lg p-8 max-w-md mx-auto">
+              <div className="text-6xl mb-4">🏖️</div>
+              <h3 className="text-2xl font-bold text-green-700 mb-2">
+                Libur Semester
+              </h3>
+              <p className="text-green-600">
+                {getTanggalMerahInfo(date)?.deskripsi}
+              </p>
+              <p className="text-sm text-green-500 mt-2">
+                Tanggal: {formatDateDDMMYYYY(date)}
+              </p>
+            </div>
+          </div>
+        ) : isTanggalMerah(date) ? (
+          // TAMPILAN UNTUK TANGGAL MERAH/LIBUR NASIONAL
+          <div className="text-center py-12">
+            <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-8 max-w-md mx-auto">
+              <div className="text-6xl mb-4">🎉</div>
+              <h3 className="text-2xl font-bold text-yellow-700 mb-2">
+                Hari Libur Nasional
+              </h3>
+              <p className="text-yellow-600 font-semibold text-lg">
+                {getTanggalMerahInfo(date)?.deskripsi}
+              </p>
+              <p className="text-sm text-yellow-500 mt-2">
+                Tanggal: {formatDateDDMMYYYY(date)}
+              </p>
+            </div>
+          </div>
+        ) : isBukanJadwalMengajar(date) ? (
+          // TAMPILAN UNTUK BUKAN JADWAL MENGAJAR
+          <div className="text-center py-12">
+            <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-8 max-w-md mx-auto">
+              <div className="text-6xl mb-4">📚</div>
+              <h3 className="text-2xl font-bold text-blue-700 mb-2">
+                Bukan Jadwal Mengajar
+              </h3>
+              <p className="text-blue-600">
+                Hari ini ({formatDateDDMMYYYY(date)}) bukan jadwal mengajar Anda
+                untuk kelas {selectedKelas}.
+              </p>
+              <p className="text-sm text-blue-500 mt-2">
+                Silakan pilih tanggal atau kelas lain.
+              </p>
+            </div>
           </div>
         ) : (
           <>
@@ -3911,13 +4184,340 @@ const SplashScreen: React.FC = () => {
         `}
       </style>
       <img
-        src="\images\IMG_20250518_064410.png"
+        src="\images\logo_1.png"
         alt="Logo Aplikasi"
         className="w-52 h-70 mb-4 animate-pulse-custom" //Pengaturan ukuran logo
       />
-      <p className="text-gray-800 text-lg font-semibold mt-6">
-        Muh. Ramlan, S.Pd
-      </p>
+      <p className="text-gray-800 text-lg font-semibold mt-6">Muh. Ramlan, S.Pd</p>
+    </div>
+  );
+};
+
+const JadwalMengajarTab: React.FC<{
+  onRefresh: () => void;
+}> = ({ onRefresh }) => {
+  const [jadwalList, setJadwalList] = useState<JadwalMengajar[]>([]);
+  const [kelasOptions, setKelasOptions] = useState<string[]>([]);
+  const [selectedKelas, setSelectedKelas] = useState("");
+  const [selectedHari, setSelectedHari] = useState<string[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isDeleting, setIsDeleting] = useState<boolean>(false);
+  const [editingKelas, setEditingKelas] = useState<string | null>(null);
+
+  const hariOptions = ["Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+
+  useEffect(() => {
+    fetchJadwalMengajar();
+    fetchKelasOptions();
+  }, []);
+
+  const fetchJadwalMengajar = () => {
+    setLoading(true);
+    fetch(`${endpoint}?action=jadwalMengajar`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (data.success) {
+          setJadwalList(data.data || []);
+        } else {
+          alert("❌ Gagal memuat data jadwal: " + data.message);
+          setJadwalList([]);
+        }
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error("Error fetch:", error);
+        alert("❌ Gagal memuat data jadwal. Cek console untuk detail.");
+        setLoading(false);
+      });
+  };
+
+  const fetchKelasOptions = () => {
+    fetch(`${endpoint}?action=kelasOptions`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (data.success) {
+          setKelasOptions(data.data || []);
+        }
+      })
+      .catch((error) => {
+        console.error("Error fetch kelas options:", error);
+      });
+  };
+
+  const handleHariToggle = (hari: string) => {
+    setSelectedHari((prev) =>
+      prev.includes(hari) ? prev.filter((h) => h !== hari) : [...prev, hari]
+    );
+  };
+
+  const handleSubmit = () => {
+    if (!selectedKelas || selectedHari.length === 0) {
+      alert("⚠️ Kelas dan minimal satu hari wajib dipilih!");
+      return;
+    }
+
+    setIsSaving(true);
+
+    const hariString = selectedHari.join(", ");
+
+    fetch(endpoint, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "jadwalMengajar",
+        kelas: selectedKelas,
+        hari: hariString,
+      }),
+    })
+      .then(() => {
+        alert("✅ Jadwal mengajar berhasil ditambahkan!");
+        setSelectedKelas("");
+        setSelectedHari([]);
+        fetchJadwalMengajar();
+        onRefresh();
+        setIsSaving(false);
+      })
+      .catch(() => {
+        alert("❌ Gagal menambahkan jadwal mengajar.");
+        setIsSaving(false);
+      });
+  };
+
+  const handleEdit = (jadwal: JadwalMengajar) => {
+    setSelectedKelas(jadwal.kelas);
+    setSelectedHari(jadwal.hari.split(", ").map((h) => h.trim()));
+    setEditingKelas(jadwal.kelas);
+  };
+
+  const handleUpdate = () => {
+    if (!selectedKelas || selectedHari.length === 0 || !editingKelas) {
+      alert("⚠️ Kelas dan minimal satu hari wajib dipilih!");
+      return;
+    }
+
+    setIsSaving(true);
+
+    const hariString = selectedHari.join(", ");
+
+    fetch(endpoint, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "editJadwalMengajar",
+        kelasLama: editingKelas,
+        kelasBaru: selectedKelas,
+        hari: hariString,
+      }),
+    })
+      .then(() => {
+        alert("✅ Jadwal mengajar berhasil diperbarui!");
+        setSelectedKelas("");
+        setSelectedHari([]);
+        setEditingKelas(null);
+        fetchJadwalMengajar();
+        onRefresh();
+        setIsSaving(false);
+      })
+      .catch(() => {
+        alert("❌ Gagal memperbarui jadwal mengajar.");
+        setIsSaving(false);
+      });
+  };
+
+  const handleDelete = (kelas: string) => {
+    if (!confirm(`Yakin ingin menghapus jadwal mengajar kelas: ${kelas}?`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+
+    fetch(endpoint, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "deleteJadwalMengajar",
+        kelas: kelas,
+      }),
+    })
+      .then(() => {
+        alert("✅ Jadwal mengajar berhasil dihapus!");
+        fetchJadwalMengajar();
+        onRefresh();
+        setIsDeleting(false);
+      })
+      .catch(() => {
+        alert("❌ Gagal menghapus jadwal mengajar.");
+        setIsDeleting(false);
+      });
+  };
+
+  const handleCancel = () => {
+    setSelectedKelas("");
+    setSelectedHari([]);
+    setEditingKelas(null);
+  };
+
+  if (loading) {
+    return (
+      <div className="text-center py-8">
+        <p className="text-gray-500">Memuat data jadwal mengajar...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto" style={{ paddingBottom: "70px" }}>
+      <div className="bg-white p-6 rounded-lg shadow-md mb-6">
+        <h2 className="text-xl font-bold mb-4 text-center text-blue-600">
+          {editingKelas !== null
+            ? "Edit Jadwal Mengajar"
+            : "Tambah Jadwal Mengajar"}
+        </h2>
+        <div className="grid grid-cols-1 gap-4 mb-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Pilih Kelas
+            </label>
+            <select
+              value={selectedKelas}
+              onChange={(e) => setSelectedKelas(e.target.value)}
+              className="w-full border border-gray-300 px-4 py-2 rounded-lg"
+              disabled={isSaving}
+            >
+              <option value="">-- Pilih Kelas --</option>
+              {kelasOptions.map((kelas) => (
+                <option key={kelas} value={kelas}>
+                  {kelas}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Pilih Hari (bisa lebih dari satu)
+            </label>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+              {hariOptions.map((hari) => (
+                <label
+                  key={hari}
+                  className={`flex items-center gap-2 p-3 border rounded-lg cursor-pointer transition-colors ${
+                    selectedHari.includes(hari)
+                      ? "bg-blue-50 border-blue-500"
+                      : "bg-white border-gray-300 hover:bg-gray-50"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedHari.includes(hari)}
+                    onChange={() => handleHariToggle(hari)}
+                    disabled={isSaving}
+                    className="h-4 w-4 text-blue-600 rounded"
+                  />
+                  <span className="text-sm text-gray-700">{hari}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-center gap-4">
+          {editingKelas !== null ? (
+            <>
+              <button
+                onClick={handleUpdate}
+                disabled={isSaving}
+                className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                  isSaving
+                    ? "bg-blue-400 cursor-not-allowed"
+                    : "bg-blue-600 hover:bg-blue-700"
+                } text-white`}
+              >
+                {isSaving ? "⏳ Menyimpan..." : "💾 Update"}
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={isSaving}
+                className="px-6 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium"
+              >
+                ❌ Batal
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={handleSubmit}
+              disabled={isSaving}
+              className={`px-6 py-2 rounded-lg font-medium transition-colors ${
+                isSaving
+                  ? "bg-blue-400 cursor-not-allowed"
+                  : "bg-blue-600 hover:bg-blue-700"
+              } text-white`}
+            >
+              {isSaving ? "⏳ Menyimpan..." : "➕ Tambah Jadwal Mengajar"}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-white p-6 rounded-lg shadow-md">
+        <h3 className="text-lg font-semibold text-gray-700 mb-4">
+          Daftar Jadwal Mengajar ({jadwalList.length})
+        </h3>
+        {jadwalList.length === 0 ? (
+          <p className="text-center text-gray-500 py-8">
+            Belum ada data jadwal mengajar.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {jadwalList.map((jadwal, index) => (
+              <div
+                key={index}
+                className="flex justify-between items-center bg-gray-50 border border-gray-200 px-4 py-3 rounded-lg"
+              >
+                <div>
+                  <p className="font-medium text-gray-800">
+                    Kelas: {jadwal.kelas}
+                  </p>
+                  <p className="text-sm text-gray-600">Hari: {jadwal.hari}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleEdit(jadwal)}
+                    disabled={isSaving || isDeleting}
+                    className={`text-xs px-3 py-1 rounded transition-colors ${
+                      isSaving || isDeleting
+                        ? "bg-yellow-400 cursor-not-allowed"
+                        : "bg-yellow-500 hover:bg-yellow-600"
+                    } text-white`}
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button
+                    onClick={() => handleDelete(jadwal.kelas)}
+                    disabled={isSaving || isDeleting}
+                    className={`text-xs px-3 py-1 rounded transition-colors ${
+                      isSaving || isDeleting
+                        ? "bg-red-400 cursor-not-allowed"
+                        : "bg-red-500 hover:bg-red-600"
+                    } text-white`}
+                  >
+                    🗑️ Hapus
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -3934,11 +4534,13 @@ const StudentAttendanceApp: React.FC = () => {
     | "semesterRecap"
     | "daftarHadir"
     | "tanggalMerah"
+    | "jadwalMengajar"
     | "clearData"
   >("studentData");
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [schoolData, setSchoolData] = useState<SchoolData | null>(null);
 
   const fetchStudents = () => {
     fetch(endpoint)
@@ -3979,12 +4581,32 @@ const StudentAttendanceApp: React.FC = () => {
       });
   };
 
+  const fetchSchoolData = () => {
+    fetch(`${endpoint}?action=schoolData`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (data.success && data.data && data.data.length > 0) {
+          setSchoolData(data.data[0]);
+          console.log("School data loaded:", data.data[0]);
+        } else {
+          setSchoolData(null);
+        }
+      })
+      .catch((error) => {
+        console.error("Error fetching school data:", error);
+      });
+  };
+
   const handleRecapRefresh = () => {
     setRefreshTrigger((prev) => prev + 1);
   };
 
   const handleRefresh = () => {
     fetchStudents();
+    fetchSchoolData();
   };
 
   useEffect(() => {
@@ -3992,6 +4614,7 @@ const StudentAttendanceApp: React.FC = () => {
     const timer = setTimeout(() => {
       setIsLoading(false);
       fetchStudents();
+      fetchSchoolData();
     }, 3000);
 
     return () => clearTimeout(timer);
@@ -4000,6 +4623,9 @@ const StudentAttendanceApp: React.FC = () => {
   if (isLoading) {
     return <SplashScreen />;
   }
+
+  const isGuruKelas = schoolData?.statusGuru === "Guru Kelas";
+  const shouldShowJadwalMengajar = !isGuruKelas;
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
@@ -4027,6 +4653,9 @@ const StudentAttendanceApp: React.FC = () => {
           { tab: "graph", label: "📈 Grafik" },
           { tab: "daftarHadir", label: "📜 Riwayat Absen" },
           { tab: "tanggalMerah", label: "📅 Data Tanggal Merah" },
+          ...(shouldShowJadwalMengajar
+            ? [{ tab: "jadwalMengajar", label: "🗓️ Jadwal Mengajar" }]
+            : []),
           { tab: "clearData", label: "🗑️ Hapus Data" },
         ].map(({ tab, label }) => (
           <button
@@ -4068,7 +4697,7 @@ const StudentAttendanceApp: React.FC = () => {
       {/* Logo di pojok kanan atas */}
       <div className="absolute top-4 right-4 z-50">
         <img
-          src="\images\Untitled design (6).png"
+          src="\images\logo_2.png"
           alt="Logo Aplikasi"
           className="w-16 h-16"
         />
@@ -4123,6 +4752,9 @@ const StudentAttendanceApp: React.FC = () => {
           )}
           {activeTab === "tanggalMerah" && (
             <TanggalMerahTab onRefresh={handleRefresh} />
+          )}
+          {activeTab === "jadwalMengajar" && shouldShowJadwalMengajar && (
+            <JadwalMengajarTab onRefresh={handleRefresh} />
           )}
           {activeTab === "clearData" && <ClearDataTab />}
         </div>
@@ -4179,6 +4811,8 @@ const DaftarHadirTab: React.FC<{
   const [filteredTanggalMerah, setFilteredTanggalMerah] = useState<
     TanggalMerah[]
   >([]);
+  const [jadwalMengajar, setJadwalMengajar] = useState<JadwalMengajar[]>([]);
+  const [loadingJadwal, setLoadingJadwal] = useState<boolean>(false);
 
   // Fungsi untuk mengecek apakah tanggal adalah hari Minggu
   const isSunday = (day: number): boolean => {
@@ -4589,6 +5223,105 @@ const DaftarHadirTab: React.FC<{
     setFilteredTanggalMerah(filtered);
   }, [tanggalMerahList, selectedMonth, selectedYear]);
 
+  const fetchJadwalMengajar = async () => {
+    setLoadingJadwal(true);
+    try {
+      const res = await fetch(`${endpoint}?action=jadwalMengajar`);
+      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+      const data = await res.json();
+      if (data.success) {
+        console.log("Jadwal mengajar loaded:", data.data);
+        setJadwalMengajar(data.data || []);
+      } else {
+        console.error("Gagal memuat jadwal mengajar:", data.message);
+        setJadwalMengajar([]);
+      }
+    } catch (error) {
+      console.error("Error fetch jadwal mengajar:", error);
+    } finally {
+      setLoadingJadwal(false);
+    }
+  };
+
+  const isJadwalMengajar = (day: number): boolean => {
+    // Jika guru kelas, semua hari adalah jadwal mengajar
+    if (schoolData?.statusGuru === "Guru Kelas") {
+      return true;
+    }
+
+    // Jika "Semua" dipilih, tidak bisa tentukan jadwal spesifik
+    if (selectedKelas === "Semua") {
+      return false; // ← UBAH dari true ke false
+    }
+
+    // Cari jadwal untuk kelas yang dipilih
+    const jadwal = jadwalMengajar.find((j) => j.kelas === selectedKelas);
+
+    if (!jadwal) {
+      // Jika tidak ada jadwal untuk kelas ini, anggap semua hari bukan jadwal
+      return false;
+    }
+
+    // Dapatkan nama hari dari tanggal
+    const date = new Date(selectedYear, selectedMonth - 1, day);
+    const dayNames = [
+      "Minggu",
+      "Senin",
+      "Selasa",
+      "Rabu",
+      "Kamis",
+      "Jumat",
+      "Sabtu",
+    ];
+    const dayName = dayNames[date.getDay()];
+
+    // Split hari dari jadwal dan trim setiap item
+    const hariJadwal = jadwal.hari
+      .split(",")
+      .map((h) => h.trim())
+      .filter((h) => h.length > 0);
+
+    // Debug log
+    console.log(`Day ${day} (${dayName}):`, {
+      jadwalHari: hariJadwal,
+      isMatch: hariJadwal.includes(dayName),
+    });
+
+    return hariJadwal.includes(dayName);
+  };
+
+  const isBukanJadwalMengajar = (day: number): boolean => {
+    // Jika guru kelas, tidak ada yang bukan jadwal
+    if (schoolData?.statusGuru === "Guru Kelas") {
+      return false;
+    }
+
+    // Jika "Semua" dipilih, tidak tampilkan sebagai bukan jadwal
+    if (selectedKelas === "Semua") {
+      return false;
+    }
+
+    const isSundayDay = isSunday(day);
+    const isTglMerah = isTanggalMerah(day);
+    const isLiburSem = isLiburSemester(day);
+    const isJadwal = isJadwalMengajar(day);
+
+    // ✅ PERBAIKAN: Bukan jadwal mengajar jika: bukan minggu, bukan tanggal merah,
+    // bukan libur semester, DAN bukan jadwal
+    return !isSundayDay && !isTglMerah && !isLiburSem && !isJadwal;
+  };
+
+  // Fetch jadwal mengajar - PRIORITAS TINGGI
+  useEffect(() => {
+    fetchJadwalMengajar();
+  }, []); // Fetch sekali saat mount
+
+  // Fetch attendance data - setelah jadwal ter-load
+  useEffect(() => {
+    if (loadingJadwal) return; // Tunggu jadwal selesai di-load
+    fetchAttendanceData();
+  }, [loadingJadwal]); // Dependency: tunggu loading jadwal selesai
+
   const isInDateRange = (
     day: number,
     startDate: string,
@@ -4742,6 +5475,24 @@ const DaftarHadirTab: React.FC<{
       perempuan: totalPerempuan,
       total: totalLakiLaki + totalPerempuan,
     };
+  };
+
+  const getHariEfektif = () => {
+    let hariEfektif = 0;
+
+    for (let day = 1; day <= daysInMonth; day++) {
+      const isSundayDay = isSunday(day);
+      const isTglMerah = isTanggalMerah(day);
+      const isLiburSem = isLiburSemester(day);
+      const isBukanJadwal = isBukanJadwalMengajar(day);
+
+      // Hitung hanya hari yang tidak merah, minggu, atau libur semester
+      if (!isSundayDay && !isTglMerah && !isLiburSem && !isBukanJadwal) {
+        hariEfektif++;
+      }
+    }
+
+    return hariEfektif;
   };
 
   const handleStatusChange = (
@@ -5170,6 +5921,33 @@ const DaftarHadirTab: React.FC<{
       "-",
     ];
 
+    // Hitung hari efektif untuk PDF (sama seperti di tabel)
+    let hariEfektifPDF = 0;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const isSundayDay = isSunday(day);
+      const isTglMerah = isTanggalMerahPDF(day);
+      const isLiburSem = isLiburSemesterPDF(day);
+      const isBukanJadwal = isBukanJadwalMengajar(day); // ✅ TAMBAHKAN
+
+      // ✅ TAMBAHKAN && !isBukanJadwal
+      if (!isSundayDay && !isTglMerah && !isLiburSem && !isBukanJadwal) {
+        hariEfektifPDF++;
+      }
+    }
+
+    const hariEfektifRow = [
+      {
+        content: "HARI EFEKTIF",
+        colSpan: 4 + daysInMonth,
+        styles: { halign: "center" as const, fontStyle: "bold" as const },
+      },
+      {
+        content: `${hariEfektifPDF} Hari`,
+        colSpan: 4,
+        styles: { halign: "center" as const, fontStyle: "bold" as const },
+      },
+    ];
+
     // Render tabel dengan baris tambahan
     autoTable(doc, {
       head: headers,
@@ -5179,6 +5957,7 @@ const DaftarHadirTab: React.FC<{
         persenHadirRow,
         totalRow,
         percentTotalRow,
+        hariEfektifRow,
       ],
       startY: currentY,
       showHead: "firstPage",
@@ -5240,6 +6019,7 @@ const DaftarHadirTab: React.FC<{
           // UBAH: Gunakan helper function yang baru
           const isTglMerah = isTanggalMerahPDF(dayNum);
           const isLiburSem = isLiburSemesterPDF(dayNum);
+          const isBukanJadwal = isBukanJadwalMengajar(dayNum);
 
           // ✅ PRIORITAS: Minggu > Libur Semester > Tanggal Merah
           if (isSundayDay) {
@@ -5252,6 +6032,11 @@ const DaftarHadirTab: React.FC<{
             data.cell.styles.fontStyle = "bold";
           } else if (isTglMerah) {
             data.cell.styles.fillColor = [211, 211, 211]; // ✅ Abu-abu RGB
+            data.cell.styles.textColor = [0, 0, 0];
+            data.cell.styles.fontStyle = "bold";
+          } else if (isBukanJadwal) {
+            // TAMBAHKAN
+            data.cell.styles.fillColor = [147, 197, 253]; // blue-300
             data.cell.styles.textColor = [0, 0, 0];
             data.cell.styles.fontStyle = "bold";
           }
@@ -5272,6 +6057,7 @@ const DaftarHadirTab: React.FC<{
           // UBAH: Gunakan helper function yang baru
           const isTglMerah = isTanggalMerahPDF(dayNum);
           const isLiburSem = isLiburSemesterPDF(dayNum);
+          const isBukanJadwal = isBukanJadwalMengajar(dayNum);
 
           if (isSundayDay) {
             data.cell.styles.fillColor = [220, 53, 69];
@@ -5280,6 +6066,9 @@ const DaftarHadirTab: React.FC<{
             data.cell.styles.fillColor = [34, 197, 94]; // green-500
           } else if (isTglMerah) {
             data.cell.styles.fillColor = [211, 211, 211];
+          } else if (isBukanJadwal) {
+            // TAMBAHKAN
+            data.cell.styles.fillColor = [147, 197, 253]; // blue-300
           }
         }
 
@@ -5298,6 +6087,7 @@ const DaftarHadirTab: React.FC<{
           // UBAH: Gunakan helper function yang baru
           const isTglMerah = isTanggalMerahPDF(dayNum);
           const isLiburSem = isLiburSemesterPDF(dayNum);
+          const isBukanJadwal = isBukanJadwalMengajar(dayNum);
 
           // ✅ PRIORITAS: Minggu > Libur Semester > Tanggal Merah
           if (isSundayDay) {
@@ -5307,6 +6097,9 @@ const DaftarHadirTab: React.FC<{
             data.cell.styles.fillColor = [34, 197, 94]; // green-500
           } else if (isTglMerah) {
             data.cell.styles.fillColor = [211, 211, 211];
+          } else if (isBukanJadwal) {
+            // TAMBAHKAN
+            data.cell.styles.fillColor = [147, 197, 253]; // blue-300
           }
 
           if (data.row.index === body.length + 1) {
@@ -5734,7 +6527,7 @@ const DaftarHadirTab: React.FC<{
           </div>
         </div>
 
-        {/* Legenda Warna */}
+        {/* Legenda Warna - UPDATE BAGIAN INI */}
         <div className="mb-4 bg-gray-50 border border-gray-300 rounded-lg p-4">
           <h4 className="text-sm font-semibold text-gray-700 mb-3">
             📌 Keterangan Warna:
@@ -5758,10 +6551,23 @@ const DaftarHadirTab: React.FC<{
                 Tanggal Merah (Libur)
               </span>
             </div>
+            {/* TAMBAHKAN KETERANGAN BARU */}
+            {schoolData?.statusGuru !== "Guru Kelas" &&
+              selectedKelas !== "Semua" && (
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-blue-300 border border-gray-300 rounded"></div>
+                  <span className="text-xs text-gray-700">
+                    Bukan Jadwal Mengajar
+                  </span>
+                </div>
+              )}
             <div className="flex items-center gap-2">
               <div className="w-6 h-6 bg-white border border-gray-300 rounded"></div>
               <span className="text-xs text-gray-700">
-                Tidak Ada Data Absensi
+                {schoolData?.statusGuru === "Guru Kelas" ||
+                selectedKelas === "Semua"
+                  ? "Hari Normal"
+                  : "Jadwal Mengajar"}
               </span>
             </div>
             <div className="flex items-center gap-2">
@@ -5774,7 +6580,7 @@ const DaftarHadirTab: React.FC<{
         <div className="overflow-auto relative" style={{ maxHeight: "70vh" }}>
           <style>
             {`
-  .attendance-table thead tr:first-child th {
+              .attendance-table thead tr:first-child th {
     position: sticky;
     top: 0;
     z-index: 30;
@@ -5889,25 +6695,28 @@ const DaftarHadirTab: React.FC<{
                 <th className="freeze-nama border px-2 py-1 text-sm">NAMA</th>
                 <th className="freeze-jk border px-2 py-1 text-sm text-center">
                   L/P
-                </th>{" "}
-                {/* KOLOM BARU */}
+                </th>
                 {Array.from({ length: daysInMonth }, (_, i) => {
                   const dayNum = i + 1;
                   const hasData = !daysWithNoData.has(dayNum);
                   const isTglMerah = isTanggalMerah(dayNum);
                   const deskripsi = getTanggalMerahDeskripsi(dayNum);
                   const isSundayDay = isSunday(dayNum);
-                  const isLiburSem = isLiburSemester(dayNum); // TAMBAHAN BARU
+                  const isLiburSem = isLiburSemester(dayNum);
+                  const isBukanJadwal = isBukanJadwalMengajar(dayNum); // TAMBAHKAN
+
                   return (
                     <th
                       key={i}
                       className={`border px-1 py-1 text-sm ${
                         isSundayDay
-                          ? "bg-red-500 text-black font-bold" // ✅ Ganti
+                          ? "bg-red-500 text-black font-bold"
                           : isLiburSem
                           ? "bg-green-500 text-black font-bold"
                           : isTglMerah
-                          ? "bg-gray-300 text-black font-bold" // ✅ Ganti
+                          ? "bg-gray-300 text-black font-bold"
+                          : isBukanJadwal // TAMBAHKAN
+                          ? "bg-blue-300 text-black font-bold"
                           : !hasData
                           ? "bg-gray"
                           : ""
@@ -5916,9 +6725,11 @@ const DaftarHadirTab: React.FC<{
                         isSundayDay
                           ? "Hari Minggu"
                           : isLiburSem
-                          ? deskripsi // TOOLTIP LIBUR SEMESTER
+                          ? deskripsi
                           : isTglMerah
                           ? deskripsi
+                          : isBukanJadwal // TAMBAHKAN
+                          ? "Bukan Jadwal Mengajar"
                           : ""
                       }
                     >
@@ -5933,24 +6744,26 @@ const DaftarHadirTab: React.FC<{
               <tr className="bg-gray-100">
                 <th className="freeze-no border px-2 py-1 text-sm"></th>
                 <th className="freeze-nama border px-2 py-1 text-sm"></th>
-                <th className="freeze-jk border px-2 py-1 text-sm"></th>{" "}
-                {/* KOLOM BARU */}
+                <th className="freeze-jk border px-2 py-1 text-sm"></th>
                 {Array.from({ length: daysInMonth }, (_, i) => {
                   const dayNum = i + 1;
                   const isTglMerah = isTanggalMerah(dayNum);
                   const isSundayDay = isSunday(dayNum);
-                  const isLiburSem = isLiburSemester(dayNum); // TAMBAHAN BARU
+                  const isLiburSem = isLiburSemester(dayNum);
+                  const isBukanJadwal = isBukanJadwalMengajar(dayNum); // TAMBAHKAN
 
                   return (
                     <th
                       key={i}
                       className={`border px-1 py-1 text-sm ${
                         isSundayDay
-                          ? "bg-red-500" // ✅ Ganti
+                          ? "bg-red-500"
                           : isLiburSem
                           ? "bg-green-500"
                           : isTglMerah
-                          ? "bg-gray-300" // ✅ Ganti
+                          ? "bg-gray-300"
+                          : isBukanJadwal // TAMBAHKAN
+                          ? "bg-blue-300"
                           : ""
                       }`}
                     ></th>
@@ -5984,7 +6797,6 @@ const DaftarHadirTab: React.FC<{
                     >
                       {student.name || "N/A"}
                     </td>
-                    {/* ========== TAMBAHKAN CELL BARU INI ========== */}
                     <td className="freeze-jk border px-2 py-1 text-xs text-center font-semibold">
                       {student.jenisKelamin === "L" ||
                       student.jenisKelamin === "LAKI-LAKI"
@@ -5994,7 +6806,6 @@ const DaftarHadirTab: React.FC<{
                         ? "P"
                         : "-"}
                     </td>
-                    {/* ========== AKHIR KODE BARU ========== */}
                     {Array.from({ length: daysInMonth }, (_, day) => {
                       const currentValue = attendance[day + 1] || "";
                       const key = `${student.id}_${day + 1}`;
@@ -6004,6 +6815,7 @@ const DaftarHadirTab: React.FC<{
                       const hasDataOnThisDate = !daysWithNoData.has(dayNum);
                       const isTglMerah = isTanggalMerah(dayNum);
                       const isSundayDay = isSunday(dayNum);
+                      const isBukanJadwal = isBukanJadwalMengajar(dayNum); // TAMBAHKAN
 
                       const getFullStatus = (
                         code: string
@@ -6042,13 +6854,15 @@ const DaftarHadirTab: React.FC<{
                           key={day}
                           className={`border px-1 py-1 text-center text-xs ${
                             isSundayDay
-                              ? "bg-red-500" // ✅ Ganti
+                              ? "bg-red-500"
                               : isEdited
                               ? "bg-yellow-100"
                               : isLiburSemester(day + 1)
                               ? "bg-green-500"
                               : isTglMerah
-                              ? "bg-gray-300" // ✅ Ganti
+                              ? "bg-gray-300"
+                              : isBukanJadwal // TAMBAHKAN
+                              ? "bg-blue-300"
                               : !hasDataOnThisDate
                               ? "bg-white"
                               : ""
@@ -6082,7 +6896,8 @@ const DaftarHadirTab: React.FC<{
                               isSaving ||
                               isSundayDay ||
                               isTglMerah ||
-                              isLiburSemester(day + 1)
+                              isLiburSemester(day + 1) ||
+                              !isJadwalMengajar(day + 1) // TAMBAHKAN - disable jika bukan jadwal
                             }
                             style={{
                               textAlign: "center",
@@ -6142,6 +6957,7 @@ const DaftarHadirTab: React.FC<{
                   const isTglMerah = isTanggalMerah(dayNum);
                   const isSundayDay = isSunday(dayNum);
                   const isLiburSem = isLiburSemester(dayNum); // TAMBAHAN BARU
+                  const isBukanJadwal = isBukanJadwalMengajar(dayNum);
 
                   return (
                     <td
@@ -6153,6 +6969,8 @@ const DaftarHadirTab: React.FC<{
                           ? "bg-green-500"
                           : isTglMerah
                           ? "bg-gray-300" // ✅ Ganti
+                          : isBukanJadwal // ✅ TAMBAHKAN
+                          ? "bg-blue-300"
                           : ""
                       }`}
                     >
@@ -6189,6 +7007,7 @@ const DaftarHadirTab: React.FC<{
                   const isTglMerah = isTanggalMerah(dayNum);
                   const isSundayDay = isSunday(dayNum);
                   const isLiburSem = isLiburSemester(dayNum); // TAMBAHAN BARU
+                  const isBukanJadwal = isBukanJadwalMengajar(dayNum);
 
                   return (
                     <td
@@ -6200,6 +7019,8 @@ const DaftarHadirTab: React.FC<{
                           ? "bg-green-500"
                           : isTglMerah
                           ? "bg-gray-300" // ✅ Ganti
+                          : isBukanJadwal // ✅ TAMBAHKAN
+                          ? "bg-blue-300"
                           : ""
                       }`}
                     >
@@ -6256,6 +7077,22 @@ const DaftarHadirTab: React.FC<{
                 </td>
                 <td className="border px-2 py-1 text-xs text-center text-red-700">
                   {getTotalSummary().percentA}%
+                </td>
+              </tr>
+
+              {/* BARIS BARU: Hari Efektif */}
+              <tr className="bg-purple-50 font-bold">
+                <td
+                  className="freeze-no border px-2 py-1 text-xs text-center"
+                  colSpan={3 + daysInMonth}
+                >
+                  HARI EFEKTIF
+                </td>
+                <td
+                  className="border px-2 py-1 text-xs text-center text-purple-700"
+                  colSpan={4}
+                >
+                  {getHariEfektif()} Hari
                 </td>
               </tr>
             </tfoot>
@@ -6582,7 +7419,8 @@ const TanggalMerahTab: React.FC<{
     "Kenaikan Isa Al-Masih",
     "Hari Raya Waisak",
     "Hari Lahir Pancasila",
-    "Hari Raya Idul Fitri",
+    "Libur Awal Puasa Ramadhan",
+    "Libur Hari Raya Idul Fitri",
     "Hari Raya Idul Adha",
     "Tahun Baru Islam",
     "Maulid Nabi Muhammad SAW",
@@ -6609,7 +7447,12 @@ const TanggalMerahTab: React.FC<{
 
   // TAMBAHKAN: Helper untuk cek apakah perlu rentang tanggal
   const needsDateRange = React.useMemo(() => {
-    return deskripsi.toLowerCase().includes("libur akhir semester");
+    const lowerDesc = deskripsi.toLowerCase();
+    return (
+      lowerDesc.includes("libur akhir semester") ||
+      lowerDesc.includes("libur awal puasa ramadhan") ||
+      lowerDesc.includes("libur hari raya idul fitri")
+    );
   }, [deskripsi]);
 
   // Fetch data tanggal merah
@@ -6882,8 +7725,18 @@ const TanggalMerahTab: React.FC<{
         {needsDateRange && (
           <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
             <p className="text-sm text-blue-700">
-              💡 <strong>Libur Semester:</strong> Silakan pilih tanggal mulai
-              dan tanggal akhir libur.
+              💡{" "}
+              <strong>
+                {deskripsi.toLowerCase().includes("libur akhir semester")
+                  ? "Libur Semester"
+                  : deskripsi
+                      .toLowerCase()
+                      .includes("libur awal puasa ramadhan")
+                  ? "Libur Awal Puasa Ramadhan"
+                  : "Libur Hari Raya Idul Fitri"}
+                :
+              </strong>{" "}
+              Silakan pilih tanggal mulai dan tanggal akhir libur.
             </p>
           </div>
         )}
